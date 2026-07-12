@@ -1,6 +1,6 @@
 {
   "name": "verus-rpc",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Full-coverage, precision-honest TypeScript client for the Verus (verusd) JSON-RPC interface — daemon-first, npm-published.",
   "license": "Apache-2.0",
   "author": "Robert Lech (chainvue)",
