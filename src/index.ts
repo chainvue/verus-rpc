@@ -28,6 +28,26 @@ export {
 
 export { ChainApi, mapGetInfo, type GetInfoResult } from "./methods/chain.js";
 export {
+  CurrencyApi,
+  mapConversionEstimate,
+  mapCurrencyConverterEntry,
+  mapCurrencyDefinition,
+  mapCurrencyState,
+  type ConversionEstimate,
+  type CurrencyConversionData,
+  type CurrencyConverterEntry,
+  type CurrencyDefinition,
+  type CurrencyState,
+  type CurrencyStateSnapshot,
+  type EstimateConversionOptions,
+  type GetCurrencyOptions,
+  type GetCurrencyStateOptions,
+  type ListCurrenciesEntry,
+  type ListCurrenciesOptions,
+  type ListCurrenciesQuery,
+  type ReserveCurrencyState,
+} from "./methods/currency.js";
+export {
   IdentityApi,
   mapGetIdentity,
   mapIdentityDefinition,

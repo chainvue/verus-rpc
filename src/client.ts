@@ -1,5 +1,6 @@
 import { toJsNumbers, toSafeNumbers } from "./lossless.js";
 import { ChainApi } from "./methods/chain.js";
+import { CurrencyApi } from "./methods/currency.js";
 import { IdentityApi } from "./methods/identity.js";
 import { WalletApi } from "./methods/wallet.js";
 import { withResilience, type ResilienceConfig } from "./resilience.js";
@@ -46,6 +47,7 @@ export class VerusClient {
   readonly chain: ChainApi;
   readonly wallet: WalletApi;
   readonly identity: IdentityApi;
+  readonly currency: CurrencyApi;
 
   private readonly transport: RpcTransport;
 
@@ -68,6 +70,7 @@ export class VerusClient {
     this.chain = new ChainApi(this.transport);
     this.wallet = new WalletApi(this.transport);
     this.identity = new IdentityApi(this.transport);
+    this.currency = new CurrencyApi(this.transport);
   }
 
   /**

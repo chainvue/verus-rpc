@@ -23,6 +23,11 @@ fixtures are parsed losslessly by the conformance suite, never through
 | `getidentitycontent.json` | https://api.verus.services, `"Verus Coin Foundation@"` | 2026-07-12 | |
 | `getidentityhistory.json` | https://api.verus.services, `"Verus Coin Foundation@"` | 2026-07-12 | 15 history entries |
 | `getidentitieswithaddress.json` | https://api.verus.services (foundation primary address) | 2026-07-12 | Truncated from 3451 to 2 entries (int-only re-serialization, lossless); flat identity shape |
+| `getcurrency.json` | https://api.verus.services, `"VRSC"` | 2026-07-12 | Fees arrive as `100.0`/`200.0` — single-decimal tokens |
+| `getcurrencystate.json` | https://api.verus.services, `"VRSC"` | 2026-07-12 | Array-of-snapshots shape |
+| `listcurrencies.json` | https://api.verus.services, `{"systemtype":"pbaas"}` | 2026-07-12 | Wrapped `currencydefinition` shape |
+| `getcurrencyconverters.json` | https://api.verus.services, `["VRSC","DAI.vETH"]` | 2026-07-12 | Converter definition under dynamic currency-id key |
+| `estimateconversion.json` | https://api.verus.services, VRSC→DAI.vETH via Bridge.vETH | 2026-07-12 | Live conversion estimate incl. reserve state |
 
 T1 discipline: synthetic fixtures are a stopgap — the tier promise ("no T1
 method without a recorded fixture") is only fully honored once the wallet

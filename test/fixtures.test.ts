@@ -10,6 +10,12 @@ import { describe, expect, it } from "vitest";
 import { VerusRpcError } from "../src/errors.js";
 import { parseLossless } from "../src/lossless.js";
 import { mapGetInfo } from "../src/methods/chain.js";
+import {
+  mapConversionEstimate,
+  mapCurrencyConverterEntry,
+  mapCurrencyDefinition,
+  mapCurrencyState,
+} from "../src/methods/currency.js";
 import { mapGetIdentity, mapIdentityDefinition, mapIdentityHistory, mapIdentityResult } from "../src/methods/identity.js";
 import {
   mapAddressGroupings,
@@ -148,6 +154,56 @@ describe("fixture conformance", () => {
     const result = mapSignMessage(fixtureResult("signmessage.json"));
     expect(result.hash.length).toBeGreaterThan(0);
     expect(result.signature.length).toBeGreaterThan(0);
+  });
+
+  it("getcurrency (recorded, mainnet)", () => {
+    const def = mapCurrencyDefinition(fixtureResult("getcurrency.json"), "getcurrency");
+    expect(def.name).toBe("VRSC");
+    expect(def.currencyid).toBe("i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV");
+    expect(def.currencyregistrationfee).toBe(20_000_000_000n); // "200.0" on the wire
+    expect(def.idregistrationfees).toBe(10_000_000_000n);
+    expect(def.lastconfirmedcurrencystate?.supply).toBeTypeOf("bigint");
+  });
+
+  it("getcurrencystate (recorded, mainnet)", () => {
+    const result = fixtureResult("getcurrencystate.json") as unknown[];
+    const state = mapCurrencyState(
+      (result[0] as Record<string, unknown>)["currencystate"],
+      "getcurrencystate",
+    );
+    expect(state.currencyid).toBe("i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV");
+    // The root chain reports no tracked supply in its own state.
+    expect(state.supply).toBe(0n);
+    expect(state.flags).toBe(16);
+  });
+
+  it("listcurrencies (recorded, mainnet)", () => {
+    const result = fixtureResult("listcurrencies.json") as unknown[];
+    for (const entry of result) {
+      const def = mapCurrencyDefinition(
+        (entry as Record<string, unknown>)["currencydefinition"],
+        "listcurrencies",
+      );
+      expect(def.currencyid.length).toBeGreaterThan(0);
+    }
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it("getcurrencyconverters (recorded, mainnet)", () => {
+    const result = fixtureResult("getcurrencyconverters.json") as unknown[];
+    const entries = result.map((item, i) => mapCurrencyConverterEntry(item, i));
+    expect(entries.length).toBeGreaterThan(0);
+    // Each converter's definition under its dynamic key maps to bigint values.
+    const first = entries[0]!;
+    const dynamicKey = Object.keys(first).find((k) => k.startsWith("i"));
+    const def = first[dynamicKey!] as { initialsupply?: bigint };
+    expect(typeof def.initialsupply).toBe("bigint");
+  });
+
+  it("estimateconversion (recorded, mainnet — live conversion)", () => {
+    const estimate = mapConversionEstimate(fixtureResult("estimateconversion.json"));
+    expect(estimate.estimatedcurrencyout).toBe(62_184_921n);
+    expect(estimate.estimatedcurrencystate?.reservecurrencies![0]!.weight).toBe(25_000_000n);
   });
 
   it("daemon error body (recorded gateway rejection)", async () => {
