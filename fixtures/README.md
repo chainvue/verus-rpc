@@ -28,6 +28,10 @@ fixtures are parsed losslessly by the conformance suite, never through
 | `listcurrencies.json` | https://api.verus.services, `{"systemtype":"pbaas"}` | 2026-07-12 | Wrapped `currencydefinition` shape |
 | `getcurrencyconverters.json` | https://api.verus.services, `["VRSC","DAI.vETH"]` | 2026-07-12 | Converter definition under dynamic currency-id key |
 | `estimateconversion.json` | https://api.verus.services, VRSC→DAI.vETH via Bridge.vETH | 2026-07-12 | Live conversion estimate incl. reserve state |
+| `getaddressbalance.json` | https://api.verus.services (foundation primary address) | 2026-07-12 | **Mixed representations**: `balance` = satoshi integer, `currencybalance` = 8-decimal value |
+| `getvdxfid.json` | https://api.verus.services, `vrsc::system.currency.export` | 2026-07-12 | |
+| `getblocksubsidy.json` | https://api.verus.services, height 4147000 | 2026-07-12 | `"miner":3.0` single-decimal token |
+| `getblockchaininfo.json` | https://api.verus.services | 2026-07-12 | T2 reference shape |
 
 T1 discipline: synthetic fixtures are a stopgap — the tier promise ("no T1
 method without a recorded fixture") is only fully honored once the wallet

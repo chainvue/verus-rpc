@@ -16,6 +16,8 @@ import {
   mapCurrencyDefinition,
   mapCurrencyState,
 } from "../src/methods/currency.js";
+import { mapAddressBalance } from "../src/methods/addressindex.js";
+import { mapGetVdxfId } from "../src/methods/blockchain.js";
 import { mapGetIdentity, mapIdentityDefinition, mapIdentityHistory, mapIdentityResult } from "../src/methods/identity.js";
 import {
   mapAddressGroupings,
@@ -204,6 +206,21 @@ describe("fixture conformance", () => {
     const estimate = mapConversionEstimate(fixtureResult("estimateconversion.json"));
     expect(estimate.estimatedcurrencyout).toBe(62_184_921n);
     expect(estimate.estimatedcurrencystate?.reservecurrencies![0]!.weight).toBe(25_000_000n);
+  });
+
+  it("getaddressbalance (recorded, mainnet — mixed sat-int + decimal)", () => {
+    const result = mapAddressBalance(fixtureResult("getaddressbalance.json"));
+    expect(result.balance).toBe(81_429_402n);
+    expect(result.received).toBe(6_141_784_527n);
+    // Decimal currency values map to the same bigint as the sat-int fields.
+    expect(result.currencybalance!["i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV"]).toBe(result.balance);
+    expect(result.currencyreceived!["i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV"]).toBe(result.received);
+  });
+
+  it("getvdxfid (recorded, mainnet)", () => {
+    const result = mapGetVdxfId(fixtureResult("getvdxfid.json"));
+    expect(result.hash160result).toBe("dcb11f97bce0c8734d92da7b0f5551acfbb629bb");
+    expect(result.qualifiedname.name).toBe("vrsc::system.currency.export");
   });
 
   it("daemon error body (recorded gateway rejection)", async () => {

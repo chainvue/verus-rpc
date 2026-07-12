@@ -1,7 +1,10 @@
 import { toJsNumbers, toSafeNumbers } from "./lossless.js";
+import { AddressIndexApi } from "./methods/addressindex.js";
+import { BlockchainApi } from "./methods/blockchain.js";
 import { ChainApi } from "./methods/chain.js";
 import { CurrencyApi } from "./methods/currency.js";
 import { IdentityApi } from "./methods/identity.js";
+import { ShieldedApi } from "./methods/shielded.js";
 import { WalletApi } from "./methods/wallet.js";
 import { withResilience, type ResilienceConfig } from "./resilience.js";
 import { DaemonTransport, type RpcTransport } from "./transport.js";
@@ -48,6 +51,9 @@ export class VerusClient {
   readonly wallet: WalletApi;
   readonly identity: IdentityApi;
   readonly currency: CurrencyApi;
+  readonly shielded: ShieldedApi;
+  readonly addressIndex: AddressIndexApi;
+  readonly blockchain: BlockchainApi;
 
   private readonly transport: RpcTransport;
 
@@ -71,6 +77,9 @@ export class VerusClient {
     this.wallet = new WalletApi(this.transport);
     this.identity = new IdentityApi(this.transport);
     this.currency = new CurrencyApi(this.transport);
+    this.shielded = new ShieldedApi(this.transport);
+    this.addressIndex = new AddressIndexApi(this.transport);
+    this.blockchain = new BlockchainApi(this.transport);
   }
 
   /**

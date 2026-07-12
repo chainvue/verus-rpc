@@ -39,6 +39,29 @@ export function mapAmountOptional(
   return value === undefined || value === null ? undefined : mapAmount(value, ctx, opts);
 }
 
+/**
+ * A satoshi-INTEGER field (addressindex family emits raw sats, not
+ * decimals) → bigint. Exact at any magnitude.
+ */
+export function mapSats(value: unknown, ctx: FieldContext, opts?: { signed?: boolean }): bigint {
+  if (!isLosslessNumber(value)) {
+    fail(ctx, `expected a JSON number (integer satoshis), got ${describe(value)}`);
+  }
+  const text = value.toString();
+  if (!/^-?\d+$/.test(text)) {
+    fail(ctx, `expected integer satoshis, got ${text}`);
+  }
+  const sats = BigInt(text);
+  if (sats < 0n && opts?.signed !== true) {
+    fail(ctx, `negative satoshis: ${text}`);
+  }
+  return sats;
+}
+
+export function mapSatsOptional(value: unknown, ctx: FieldContext, opts?: { signed?: boolean }): bigint | undefined {
+  return value === undefined || value === null ? undefined : mapSats(value, ctx, opts);
+}
+
 /** Heights, counts, indexes, timestamps — plain safe integers. */
 export function mapInt(value: unknown, ctx: FieldContext): number {
   if (!isLosslessNumber(value)) {

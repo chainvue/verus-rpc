@@ -28,6 +28,32 @@ export {
 
 export { ChainApi, mapGetInfo, type GetInfoResult } from "./methods/chain.js";
 export {
+  AddressIndexApi,
+  mapAddressBalance,
+  mapAddressDelta,
+  mapAddressUtxo,
+  type AddressBalanceResult,
+  type AddressDelta,
+  type AddressRangeOptions,
+  type AddressUtxo,
+} from "./methods/addressindex.js";
+export {
+  BlockchainApi,
+  mapGetVdxfId,
+  type CreateRawTransactionInput,
+  type GetVdxfIdResult,
+  type RawTransactionOptions,
+} from "./methods/blockchain.js";
+export {
+  ShieldedApi,
+  type WaitForOperationOptions,
+  type ZReceivedEntry,
+  type ZSendManyEntry,
+  type ZSendManyOptions,
+  type ZTotalBalanceResult,
+  type ZUnspentEntry,
+} from "./methods/shielded.js";
+export {
   CurrencyApi,
   mapConversionEstimate,
   mapCurrencyConverterEntry,
