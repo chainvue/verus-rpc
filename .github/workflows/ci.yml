@@ -1,0 +1,50 @@
+# CI — install, build, typecheck, lint, test on every push and PR.
+#
+# Notes (lifted from v402):
+# - pnpm comes from pnpm/action-setup, which reads the `packageManager`
+#   field — the single source of truth for the pnpm version.
+# - Node matrix: 22 (minimum supported, see engines) + current.
+# - Integration suites gated behind VERUS_RPC_URL skip automatically — CI
+#   has no Verus node.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        node-version: [22, 26]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test

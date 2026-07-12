@@ -1,0 +1,17 @@
+# Private planning doc — never committed (v402/Peculium convention, see RISKS.md)
+PLAN.md
+
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Real credentials never enter the repo — .env.example documents the shape
+.env
+.env.*
+!.env.example
+
+# Unsanitized fixture recordings (raw daemon output before scrubbing)
+fixtures-raw/
+
+.DS_Store

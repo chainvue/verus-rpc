@@ -1,0 +1,54 @@
+{
+  "name": "verus-rpc",
+  "version": "0.1.0",
+  "description": "Full-coverage, precision-honest TypeScript client for the Verus (verusd) JSON-RPC interface — daemon-first, npm-published.",
+  "license": "Apache-2.0",
+  "author": "Robert Lech (chainvue)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chainvue/verus-rpc.git"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "verus",
+    "verusd",
+    "vrsc",
+    "rpc",
+    "json-rpc",
+    "verusid",
+    "pbaas",
+    "blockchain"
+  ],
+  "packageManager": "pnpm@11.11.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.1",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.63.0",
+    "vitest": "^4.1.10"
+  }
+}
