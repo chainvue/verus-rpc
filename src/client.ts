@@ -10,8 +10,18 @@ import { withResilience, type ResilienceConfig } from "./resilience.js";
 import { DaemonTransport, type RpcTransport } from "./transport.js";
 
 export interface VerusClientConfig {
-  /** Daemon RPC endpoint, e.g. `http://127.0.0.1:27486`. */
+  /**
+   * RPC endpoint: a local daemon (`http://127.0.0.1:27486`) or a public
+   * lite-wallet node (`https://api.verus.services`, `https://api.verustest.net`).
+   */
   url?: string;
+  /**
+   * Basic-auth credentials for a daemon. Omit BOTH for unauthenticated
+   * public nodes — those expose a whitelisted read+broadcast subset
+   * (getaddressutxos, getaddressbalance, getidentity, getcurrency,
+   * getrawtransaction, sendrawtransaction, …); wallet methods stay
+   * unavailable there.
+   */
   user?: string;
   pass?: string;
   /** Injectable for tests and exotic runtimes; defaults to global `fetch`. */
@@ -61,13 +71,16 @@ export class VerusClient {
     if (config.transport !== undefined) {
       this.transport = config.transport;
     } else {
-      if (config.url === undefined || config.user === undefined || config.pass === undefined) {
-        throw new TypeError("VerusClient: url, user and pass are required (or pass a transport)");
+      if (config.url === undefined) {
+        throw new TypeError("VerusClient: url is required (or pass a transport)");
+      }
+      if ((config.user === undefined) !== (config.pass === undefined)) {
+        throw new TypeError("VerusClient: user and pass must be provided together (omit both for public nodes)");
       }
       const daemon = new DaemonTransport({
         url: config.url,
-        user: config.user,
-        pass: config.pass,
+        ...(config.user !== undefined ? { user: config.user } : {}),
+        ...(config.pass !== undefined ? { pass: config.pass } : {}),
         ...(config.fetchImpl !== undefined ? { fetchImpl: config.fetchImpl } : {}),
         ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
       });

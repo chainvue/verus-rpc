@@ -98,4 +98,23 @@ describe("DaemonTransport", () => {
   it("rejects an empty url at construction", () => {
     expect(() => new DaemonTransport({ url: "", user: "u", pass: "p" })).toThrow(TypeError);
   });
+
+  it("sends NO authorization header when credentials are omitted (public node)", async () => {
+    const { fetchImpl, requests } = fetchReturning(200, '{"result":null,"error":null}');
+    const transport = new DaemonTransport({ url: "https://api.verustest.net", fetchImpl });
+
+    await transport.request("getinfo", []);
+    expect(requests).toHaveLength(1);
+    expect("authorization" in requests[0]!.headers).toBe(false);
+    expect(requests[0]!.headers["content-type"]).toBe("application/json");
+  });
+
+  it("rejects half-provided credentials at construction", () => {
+    expect(() => new DaemonTransport({ url: "https://api.verustest.net", user: "u" })).toThrow(
+      /provided together/,
+    );
+    expect(() => new DaemonTransport({ url: "https://api.verustest.net", pass: "p" })).toThrow(
+      /provided together/,
+    );
+  });
 });

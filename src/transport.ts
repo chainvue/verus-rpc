@@ -16,10 +16,21 @@ export interface RpcTransport {
 }
 
 export interface DaemonTransportConfig {
-  /** e.g. `http://127.0.0.1:27486` (VRSC) / `:18843` (VRSCTEST) */
+  /**
+   * e.g. `http://127.0.0.1:27486` (VRSC) / `:18843` (VRSCTEST), or a public
+   * lite-wallet node: `https://api.verus.services` (mainnet) /
+   * `https://api.verustest.net` (VRSCTEST).
+   */
   url: string;
-  user: string;
-  pass: string;
+  /**
+   * Basic-auth credentials. Omit BOTH for unauthenticated public nodes
+   * (they expose a whitelisted read+broadcast subset: getaddressutxos,
+   * getaddressbalance, getidentity, getcurrency, getrawtransaction,
+   * sendrawtransaction, …). Supplying only one of user/pass is a config
+   * error.
+   */
+  user?: string;
+  pass?: string;
   /** Injectable for tests and exotic runtimes; defaults to global `fetch`. */
   fetchImpl?: typeof fetch;
   /** Plain per-request timeout in ms; generous by default (60s). */
@@ -51,14 +62,18 @@ interface RpcErrorBody {
  */
 export class DaemonTransport implements RpcTransport {
   private readonly url: string;
-  private readonly authorization: string;
+  private readonly authorization: string | undefined;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
 
   constructor(config: DaemonTransportConfig) {
     if (config.url === "") throw new TypeError("DaemonTransport: url must not be empty");
+    if ((config.user === undefined) !== (config.pass === undefined)) {
+      throw new TypeError("DaemonTransport: user and pass must be provided together (omit both for public nodes)");
+    }
     this.url = config.url;
-    this.authorization = "Basic " + toBase64(`${config.user}:${config.pass}`);
+    this.authorization =
+      config.user !== undefined ? "Basic " + toBase64(`${config.user}:${config.pass}`) : undefined;
     this.fetchImpl = config.fetchImpl ?? fetch;
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
@@ -70,7 +85,7 @@ export class DaemonTransport implements RpcTransport {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: this.authorization,
+          ...(this.authorization !== undefined ? { authorization: this.authorization } : {}),
         },
         body: stringifyLossless({ jsonrpc: "1.0", id: "verus-rpc", method, params }),
         signal: AbortSignal.timeout(this.timeoutMs),

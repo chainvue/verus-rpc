@@ -10,12 +10,9 @@ npm install verus-rpc
 ```ts
 import { VerusClient, formatAmount } from "verus-rpc";
 
-// No daemon needed to try it — this is the public read-only mainnet RPC.
-const client = new VerusClient({
-  url: "https://api.verus.services",
-  user: "public",
-  pass: "public",
-});
+// No daemon needed to try it — public nodes take no credentials at all.
+// https://api.verus.services (mainnet) · https://api.verustest.net (VRSCTEST)
+const client = new VerusClient({ url: "https://api.verus.services" });
 
 const height = await client.chain.getBlockCount();
 const id = await client.identity.getIdentity({ nameOrAddress: "Verus Coin Foundation@" });
@@ -23,7 +20,11 @@ const id = await client.identity.getIdentity({ nameOrAddress: "Verus Coin Founda
 console.log(height, id.identity.identityaddress);
 ```
 
-That's the whole setup. Point it at your own node when you're ready:
+Public nodes expose a whitelisted lite-wallet subset — reads like
+`getaddressutxos` / `getaddressbalance` / `getidentity` / `getcurrency` /
+`getrawtransaction` plus `sendrawtransaction` for broadcasting locally
+signed transactions. Wallet methods (`getbalance`, `sendcurrency`, `z_*`)
+need your own daemon:
 
 ```ts
 const client = new VerusClient({

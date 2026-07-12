@@ -185,7 +185,9 @@ describe.skipIf(!cfg.hasUrl)("gated integration: real daemon (read-only)", () =>
 });
 
 describe.skipIf(process.env["VERUS_RPC_MAINNET_SMOKE"] !== "1")("gated smoke: public mainnet RPC", () => {
-  const client = () => new VerusClient({ url: "https://api.verus.services", user: "public", pass: "public" });
+  // Public nodes are unauthenticated — constructing without credentials IS
+  // the feature under test (lite-wallet transport for Peculium et al.).
+  const client = () => new VerusClient({ url: "https://api.verus.services" });
 
   it("getinfo shape holds on mainnet", async () => {
     const info = await client().chain.getInfo();
@@ -196,5 +198,21 @@ describe.skipIf(process.env["VERUS_RPC_MAINNET_SMOKE"] !== "1")("gated smoke: pu
   it("getidentity shape holds on mainnet", async () => {
     const result = await client().identity.getIdentity({ nameOrAddress: "Verus Coin Foundation@" });
     expect(result.identity.identityaddress.startsWith("i")).toBe(true);
+  });
+
+  it("public testnet node serves the light-client read set without auth", async () => {
+    const testnet = new VerusClient({ url: "https://api.verustest.net" });
+    const info = await testnet.chain.getInfo();
+    expect(info.testnet).toBe(true);
+
+    const identity = await testnet.identity.getIdentity({ nameOrAddress: "v402-facilitator@" });
+    const address = identity.identity.identityaddress;
+    expect(address.startsWith("i")).toBe(true);
+
+    const balance = await testnet.addressIndex.getAddressBalance({ addresses: [address] });
+    expect(typeof balance.balance).toBe("bigint");
+
+    const utxos = await testnet.addressIndex.getAddressUtxos({ addresses: [address] });
+    expect(Array.isArray(utxos)).toBe(true);
   });
 });

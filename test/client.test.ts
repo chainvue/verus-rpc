@@ -3,9 +3,19 @@ import { VerusClient } from "../src/client.js";
 import { MockTransport } from "../src/mock.js";
 
 describe("VerusClient", () => {
-  it("requires url/user/pass unless a transport is injected", () => {
+  it("requires url unless a transport is injected", () => {
     expect(() => new VerusClient({})).toThrow(TypeError);
     expect(() => new VerusClient({ transport: new MockTransport() })).not.toThrow();
+  });
+
+  it("accepts url without credentials (public node) but rejects half-provided credentials", () => {
+    expect(() => new VerusClient({ url: "https://api.verustest.net" })).not.toThrow();
+    expect(() => new VerusClient({ url: "https://api.verustest.net", user: "u" })).toThrow(
+      /provided together/,
+    );
+    expect(() => new VerusClient({ url: "https://api.verustest.net", pass: "p" })).toThrow(
+      /provided together/,
+    );
   });
 
   it("call() defaults to lossless numbers — no float64 for amounts", async () => {
