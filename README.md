@@ -1,138 +1,250 @@
 # verus-rpc
 
-The npm-published, full-coverage, precision-honest TypeScript client for
-talking to your own `verusd` — daemon-first JSON-RPC transport and types.
+A TypeScript client for talking to a Verus daemon (`verusd`) — the whole
+JSON-RPC surface, typed, with amounts you can actually trust.
 
 ```bash
-npm install verus-rpc   # or: pnpm add verus-rpc
+npm install verus-rpc
 ```
 
 ```ts
 import { VerusClient, formatAmount } from "verus-rpc";
 
-// Read-only against the public mainnet RPC — no daemon, no credentials.
+// No daemon needed to try it — this is the public read-only mainnet RPC.
 const client = new VerusClient({
   url: "https://api.verus.services",
   user: "public",
   pass: "public",
 });
 
+const height = await client.chain.getBlockCount();
 const id = await client.identity.getIdentity({ nameOrAddress: "Verus Coin Foundation@" });
-console.log(id.identity.identityaddress);
 
-const balance = await client.wallet.getBalance();       // 200_000_000n  (bigint sats)
-console.log(formatAmount(balance));                      // "2.00000000"
+console.log(height, id.identity.identityaddress);
 ```
 
-## The one invariant
+That's the whole setup. Point it at your own node when you're ready:
 
-**No float ever crosses the public API for a value field.**
+```ts
+const client = new VerusClient({
+  url: "http://127.0.0.1:27486",   // 27486 mainnet · 18843 testnet
+  user: process.env.VERUS_RPC_USER,
+  pass: process.env.VERUS_RPC_PASS,
+});
+```
 
-The daemon emits amounts as JSON decimal numbers (`{"VRSCTEST":2.00000000}`,
-and on mainnet even `relayfee:1e-6`). A client that runs those through
-`JSON.parse` puts float64 in its money path. `verus-rpc` parses the response
-body losslessly and maps every value field to an exact type:
+## Money is exact, always
 
-- **Curated methods** → `bigint` satoshis (Verus = 8 decimals). Helpers:
-  `parseAmount("2.00000000") === 200_000_000n`, `formatAmount(200_000_000n) === "2.00000000"`.
-- **Typed methods** → exact decimal `string`.
-- **`call()` escape hatch** → safe integers become `number`, everything else
-  an exact decimal `string`; opt into raw float64 with `{ numbers: "js" }`.
+The one thing that sets this client apart: **amounts never touch a float.**
+Curated methods hand you `bigint` satoshis, and two helpers convert to and
+from the human form:
 
-Heights, counts and timestamps stay `number`. Unknown fields a newer daemon
-adds are passed through (safe integer → `number`, otherwise exact string) —
-never stripped, never rounded.
+```ts
+import { parseAmount, formatAmount } from "verus-rpc";
 
-## What this is (and isn't)
+const balance = await client.wallet.getBalance();  // 923_514_291_611n
+formatAmount(balance);                              // "9235.14291611"
+parseAmount("1.5");                                 // 150_000_000n
+```
 
-Deliberately complementary to the official VerusCoin TypeScript stack. This
-library is the **daemon-first RPC transport + types** — the layer VerusCoin
-doesn't ship on npm. It does **not** do client-side signing, login consent,
-VerusPay invoices, or transaction construction — that is
+Why it matters: `verusd` sends amounts as JSON decimals (and things like
+`relayfee: 1e-6`). A client that runs those through `JSON.parse` quietly puts
+float64 rounding in your money path — and Verus' supply is large enough that
+plain numbers lose precision. `verus-rpc` parses losslessly and keeps every
+value field exact. You never think about it; it just doesn't drift.
+
+## What you can do
+
+Everything hangs off the client under a namespace per area. Here's the tour.
+
+### Chain & blocks
+
+```ts
+await client.chain.getInfo();                          // version, height, fees…
+await client.chain.getBlockCount();
+await client.blockchain.getBlock({ hashOrHeight: 4147000, verbosity: 2 });
+await client.blockchain.getBlockchainInfo();
+```
+
+### Wallet & sending
+
+Balances, history, and sending — including the async send done right:
+
+```ts
+await client.wallet.getBalance();                      // bigint sats
+await client.wallet.getCurrencyBalance({ address: "me@" });   // per-currency
+await client.wallet.getWalletInfo();
+await client.wallet.listUnspent();
+await client.wallet.listTransactions({ count: 20 });
+
+// sendcurrency returns an operation id and settles asynchronously.
+// This helper polls it to completion and hands you the txid:
+const { txid } = await client.wallet.sendCurrencyAndWait({
+  fromAddress: "*",
+  outputs: [{ address: "receiver@", amount: parseAmount("1.5") }],
+});
+```
+
+Need multiple recipients or fine control? `sendMany`, `sendCurrency` (raw
+opid), `getNewAddress`, `signMessage`/`verifyMessage`, and the key
+import/export/backup methods are all there.
+
+### Identities (VerusID)
+
+Look them up, and run the full lifecycle:
+
+```ts
+await client.identity.getIdentity({ nameOrAddress: "name@" });
+await client.identity.getIdentityHistory({ nameOrAddress: "name@" });
+await client.identity.listIdentities();                // your wallet's own
+
+// Registration is a two-step commit/reveal — this helper does both,
+// waiting for the commitment to confirm in between:
+const { registrationTxid } = await client.identity.registerIdentityFlow({
+  name: "mynewid",
+  controlAddress: "R…",
+});
+
+await client.identity.updateIdentity({ identity: modified });
+await client.identity.revokeIdentity({ nameOrId: "name@" });
+await client.identity.recoverIdentity({ identity: recovered });
+```
+
+Plus data signing and trust: `signData`, `verifyHash`, `getIdentityTrust`, and
+friends.
+
+### Currencies, conversion & marketplace
+
+Read currency state and estimate conversions across the PBaaS/DeFi system:
+
+```ts
+await client.currency.getCurrency({ currency: "Bridge.vETH" });
+await client.currency.listCurrencies({ query: { systemType: "pbaas" } });
+
+const quote = await client.currency.estimateConversion({
+  currency: "VRSC",
+  convertTo: "DAI.vETH",
+  via: "Bridge.vETH",
+  amount: parseAmount("10"),
+});
+formatAmount(quote.estimatedcurrencyout);
+```
+
+The on-chain marketplace is here too: `makeOffer`, `takeOffer`, `getOffers`,
+`listOpenOffers`, `closeOffers`.
+
+### Private (shielded) balances & sends
+
+The `z_*` family, with the same opid-polling ergonomics as transparent sends:
+
+```ts
+await client.shielded.zGetTotalBalance();              // { transparent, private, total }
+
+const { txid } = await client.shielded.zSendManyAndWait({
+  fromAddress: "zs1…",
+  amounts: [{ address: "zs1…", amount: parseAmount("0.1"), memo: "f5" }],
+});
+```
+
+### Address index
+
+Query any address, not just your wallet's:
+
+```ts
+await client.addressIndex.getAddressBalance({ addresses: ["R…"] });
+await client.addressIndex.getAddressUtxos({ addresses: ["R…"] });
+```
+
+### Anything else — the escape hatch
+
+Coverage is broad, but the client never blocks you. `call()` reaches **every**
+daemon method, typed or not:
+
+```ts
+await client.call("getmininginfo");
+await client.call("z_validateaddress", ["zs1…"]);
+```
+
+Numbers come back exact by default (safe integers as `number`, everything else
+as a precise decimal string). Opt into raw floats with `{ numbers: "js" }` if
+you really want them.
+
+## Handling errors
+
+Errors tell you *what kind* of thing went wrong, so you can branch cleanly:
+
+```ts
+import { VerusRpcError, TransportError, RpcErrorCode } from "verus-rpc";
+
+try {
+  await client.wallet.sendCurrencyAndWait({ /* … */ });
+} catch (err) {
+  if (err instanceof VerusRpcError && err.code === RpcErrorCode.RPC_WALLET_INSUFFICIENT_FUNDS) {
+    // the daemon said no — not enough funds
+  } else if (err instanceof TransportError) {
+    // couldn't reach the node / timed out
+  }
+}
+```
+
+Async sends also throw `OperationFailedError` (the daemon reported failure,
+with its code) and `OperationTimeoutError` (no result in time).
+
+## Optional resilience
+
+It's a library, so it stays out of your way by default. Flip on a circuit
+breaker and per-attempt timeout when you want them — daemon-level errors never
+trip the breaker:
+
+```ts
+new VerusClient({
+  url, user, pass,
+  resilience: { timeoutMs: 5000, breaker: { failuresBeforeOpen: 5 } },
+});
+```
+
+## How complete is each area?
+
+Every method is reachable; the difference is how much typing and testing it
+carries.
+
+- **Curated** — named options, precise types, `bigint` amounts, tested against
+  recorded daemon responses: chain reads, wallet & sends, identity (reads +
+  full lifecycle), currency/conversion reads, address index.
+- **Typed** — typed in and out, amounts as exact decimal strings: shielded
+  (`z_*`), marketplace, raw-transaction building, network/util reads, identity
+  signatures.
+- **Escape hatch** — `call()` for everything else. Always available.
+
+Areas graduate toward "curated" based on what people actually use.
+
+## Testing your own code
+
+`MockTransport` is exported so your tests never need a live node:
+
+```ts
+import { VerusClient, MockTransport } from "verus-rpc";
+
+const mock = new MockTransport().respondJson("getblockcount", "42");
+const client = new VerusClient({ transport: mock });
+// client.chain.getBlockCount() → 42
+```
+
+## Where this fits
+
+`verus-rpc` is the layer that talks to your own `verusd` — transport and types,
+nothing more. It deliberately doesn't do client-side signing, login consent,
+VerusPay invoices, or transaction construction; that's
 [`verusid-ts-client`](https://github.com/VerusCoin/verusid-ts-client) and the
-BitGo `utxo-lib-verus` fork. Link to them; don't reimplement them.
+Verus BitGo fork. Use them together.
 
-| Lane | Library |
-|---|---|
-| Talk to your own `verusd` (this) | **`verus-rpc`** |
-| VerusID signing / login / VerusPay | `verusid-ts-client` |
-| Transaction building | `@bitgo/utxo-lib` (Verus fork) |
-| ZMQ block/tx events | `verus-zmq-client` |
+## Good to know
 
-## Coverage tiers
-
-A tier is a promise about **testing**, not just typing.
-
-| Tier | Contract | Families |
-|---|---|---|
-| **T1 — curated** | Named-options params, curated response types, value fields as `bigint` sats, recorded-fixture conformance test per method | Chain reads, wallet + sends, identity (read + lifecycle), currency/conversion reads, addressindex, `getvdxfid` |
-| **T2 — typed** | Typed params/results, value fields as exact decimal strings | Shielded (`z_*`), marketplace, raw-transaction chain, network/util reads, identity signatures/trust |
-| **T3 — escape hatch** | `client.call(method, params)` — untyped, always available | everything else — mining/staking, notarization internals, `definecurrency` depth |
-
-Promotion T3→T2→T1 is demand-driven. `call()` means the client never blocks
-you on missing coverage.
-
-## Client namespaces
-
-```ts
-client.chain        // getInfo, getBlockCount
-client.blockchain   // blocks, raw-tx chain, network/util reads, getVdxfId
-client.wallet       // balances, transactions, sends, sendCurrencyAndWait, keys
-client.shielded     // z_* family + z-operation polling helpers
-client.identity     // reads, lifecycle, registerIdentityFlow
-client.currency     // getCurrency, listCurrencies, estimateConversion, marketplace
-client.addressIndex // getAddressBalance/Utxos/Deltas (arbitrary addresses)
-client.call(method, params, { numbers })  // anything else
-```
-
-### High-level helpers
-
-- `wallet.sendCurrencyAndWait(...)` — `sendcurrency` returns an operation id;
-  this polls `z_getoperationstatus` to success/failure and resolves with the
-  txid (or throws `OperationFailedError` / `OperationTimeoutError`).
-- `identity.registerIdentityFlow(...)` — `registernamecommitment` →
-  wait-for-confirmation → `registeridentity` as one guided call.
-- `shielded.zSendManyAndWait(...)` — the same opid pattern for `z_sendmany`.
-
-## Resilience (opt-in)
-
-This is a library — you own your retry/breaker posture. A circuit breaker +
-per-attempt timeout are available and **off by default**; application errors
-never trip the breaker.
-
-```ts
-new VerusClient({ url, user, pass, resilience: { timeoutMs: 5000, breaker: { failuresBeforeOpen: 5 } } });
-```
-
-## Errors
-
-- `VerusRpcError(method, code, message)` — the daemon answered with an error.
-  Branch on `error.code` via the `RpcErrorCode` enum (no message string-matching).
-- `TransportError(reason, message)` — network / timeout / bad-response / circuit-open.
-- `ResponseMappingError` — a curated response didn't match the mapper (daemon
-  drift); the raw value is still reachable via `call()`.
-
-## Testing
-
-Three rings (see `test/`):
-
-1. **Unit** — `MockTransport` (exported for your tests too); every method's
-   param marshalling, error paths, amount edge cases.
-2. **Fixture conformance** — responses recorded from a real daemon
-   (`fixtures/`), curated mappers validated **offline**. This is the
-   type-honesty check.
-3. **Gated integration** — set `VERUS_RPC_URL` to run read-only against your
-   node; `VERUS_RPC_MAINNET_SMOKE=1` runs a read-only smoke against
-   api.verus.services.
-
-Examples in `examples/` are executed as-is (guarded in the test suite) — the
-code you read is the code that runs.
-
-## Compatibility
-
-- Node ≥ 22. Isomorphic-clean core (no `Buffer`/`fs` in the client path).
-- Types are curated against **daemon v1.2.17**; `getInfo().VRSCversion` lets
-  you check at runtime. Unknown response fields pass through.
+- Node ≥ 22. No `Buffer`/`fs` in the client path.
+- Typed against daemon **v1.2.17**; unknown fields from newer daemons pass
+  through untouched, so an upgrade won't break your reads.
+- More depth per area in [`docs/`](./docs): amounts, wallet, identity,
+  currencies. Runnable scripts in [`examples/`](./examples).
 
 ## License
 
