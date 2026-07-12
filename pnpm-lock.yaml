@@ -7,6 +7,13 @@ settings:
 importers:
 
   .:
+    dependencies:
+      cockatiel:
+        specifier: ^4.0.0
+        version: 4.0.0
+      lossless-json:
+        specifier: ^4.3.0
+        version: 4.3.0
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -351,6 +358,10 @@ packages:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
     engines: {node: '>=18'}
 
+  cockatiel@4.0.0:
+    resolution: {integrity: sha512-XpUZJnogsd03BGB19T9sv7Xb8SwvD8JddZV2Tlp0LNspopZ6Idv24ZwCl8vAGJ6JwODZ0zLRYVj3NWvmRcUDqA==}
+    engines: {node: '>=22'}
+
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
@@ -592,6 +603,9 @@ packages:
   locate-path@6.0.0:
     resolution: {integrity: sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==}
     engines: {node: '>=10'}
+
+  lossless-json@4.3.0:
+    resolution: {integrity: sha512-ToxOC+SsduRmdSuoLZLYAr5zy1Qu7l5XhmPWM3zefCZ5IcrzW/h108qbJUKfOlDlhvhjUK84+8PSVX0kxnit0g==}
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -1145,6 +1159,8 @@ snapshots:
 
   chai@6.2.2: {}
 
+  cockatiel@4.0.0: {}
+
   convert-source-map@2.0.0: {}
 
   cross-spawn@7.0.6:
@@ -1351,6 +1367,8 @@ snapshots:
   locate-path@6.0.0:
     dependencies:
       p-locate: 5.0.0
+
+  lossless-json@4.3.0: {}
 
   magic-string@0.30.21:
     dependencies:

@@ -2,7 +2,10 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    // DOM lib provides the web-platform globals the isomorphic-clean core
+    // uses (fetch, Response, TextEncoder, btoa, AbortSignal) — Node >=22
+    // ships them all at runtime.
+    "lib": ["ES2022", "DOM"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,

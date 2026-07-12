@@ -1,0 +1,1 @@
+{"result":[{"id":"opid-9c1f38a6-2f34-4c9b-8b1e-6d3a5b7c9d0e","status":"success","creation_time":1783809948,"result":{"txid":"9f2a44e2b5c1e0d3a7fb1c8e6d5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a"},"execution_secs":0.037381236,"method":"sendcurrency","params":[{"address":"verusrpc-test@","amount":0.10000000,"currency":"VRSCTEST"}]}],"error":null,"id":"synthetic"}

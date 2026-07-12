@@ -1,0 +1,121 @@
+/**
+ * Error taxonomy — the split matters for resilience:
+ *
+ * - `VerusRpcError` — the daemon answered with a JSON-RPC error (bad params,
+ *   unknown identity, insufficient funds, …). The node is HEALTHY; these never
+ *   count toward the optional circuit breaker, otherwise malformed requests
+ *   could trip it and deny service (v402 lesson).
+ * - `TransportError` — the node could not be reached, did not answer in time,
+ *   answered with an unparseable body, or the breaker is open.
+ */
+
+export type TransportFailureReason = "network" | "timeout" | "bad-response" | "circuit-open";
+
+export class TransportError extends Error {
+  readonly reason: TransportFailureReason;
+
+  constructor(reason: TransportFailureReason, message: string) {
+    super(message);
+    this.name = "TransportError";
+    this.reason = reason;
+  }
+}
+
+/**
+ * Common daemon error codes (Bitcoin/Zcash lineage, `rpcprotocol.h`) so
+ * consumers can branch on `error.code` without string-matching messages.
+ */
+export const RpcErrorCode = {
+  // JSON-RPC 2.0-style protocol errors
+  RPC_INVALID_REQUEST: -32600,
+  RPC_METHOD_NOT_FOUND: -32601,
+  RPC_INVALID_PARAMS: -32602,
+  RPC_INTERNAL_ERROR: -32603,
+  RPC_PARSE_ERROR: -32700,
+  // General application errors
+  RPC_MISC_ERROR: -1,
+  RPC_FORBIDDEN_BY_SAFE_MODE: -2,
+  RPC_TYPE_ERROR: -3,
+  RPC_INVALID_ADDRESS_OR_KEY: -5,
+  RPC_OUT_OF_MEMORY: -7,
+  RPC_INVALID_PARAMETER: -8,
+  RPC_DATABASE_ERROR: -20,
+  RPC_DESERIALIZATION_ERROR: -22,
+  RPC_VERIFY_ERROR: -25,
+  RPC_VERIFY_REJECTED: -26,
+  RPC_VERIFY_ALREADY_IN_CHAIN: -27,
+  RPC_IN_WARMUP: -28,
+  // P2P client errors
+  RPC_CLIENT_NOT_CONNECTED: -9,
+  RPC_CLIENT_IN_INITIAL_DOWNLOAD: -10,
+  RPC_CLIENT_NODE_ALREADY_ADDED: -23,
+  RPC_CLIENT_NODE_NOT_ADDED: -24,
+  // Wallet errors
+  RPC_WALLET_ERROR: -4,
+  RPC_WALLET_INSUFFICIENT_FUNDS: -6,
+  RPC_WALLET_INVALID_ACCOUNT_NAME: -11,
+  RPC_WALLET_KEYPOOL_RAN_OUT: -12,
+  RPC_WALLET_UNLOCK_NEEDED: -13,
+  RPC_WALLET_PASSPHRASE_INCORRECT: -14,
+  RPC_WALLET_WRONG_ENC_STATE: -15,
+  RPC_WALLET_ENCRYPTION_FAILED: -16,
+  RPC_WALLET_ALREADY_UNLOCKED: -17,
+} as const;
+
+export type RpcErrorCode = (typeof RpcErrorCode)[keyof typeof RpcErrorCode];
+
+/** The daemon answered the call with a JSON-RPC error body. */
+export class VerusRpcError extends Error {
+  readonly method: string;
+  readonly code: number;
+
+  constructor(method: string, code: number, message: string) {
+    super(`${method}: ${message} (code ${code})`);
+    this.name = "VerusRpcError";
+    this.method = method;
+    this.code = code;
+  }
+}
+
+/**
+ * A curated (T1) response did not have the shape the mapper expects — the
+ * daemon version drifted or the type curation is wrong. The raw value is
+ * intact on the wire; `client.call()` always works as the escape hatch.
+ */
+export class ResponseMappingError extends Error {
+  readonly method: string;
+  readonly field: string;
+
+  constructor(method: string, field: string, message: string) {
+    super(`${method}: field "${field}": ${message}`);
+    this.name = "ResponseMappingError";
+    this.method = method;
+    this.field = field;
+  }
+}
+
+/** An async wallet operation (opid) finished with status "failed" or "cancelled". */
+export class OperationFailedError extends Error {
+  readonly opid: string;
+  readonly status: string;
+  readonly code: number | undefined;
+
+  constructor(opid: string, status: string, code: number | undefined, message: string) {
+    super(`operation ${opid} ${status}: ${message}`);
+    this.name = "OperationFailedError";
+    this.opid = opid;
+    this.status = status;
+    this.code = code;
+  }
+}
+
+/** An async wallet operation (opid) did not reach a final state within the polling deadline. */
+export class OperationTimeoutError extends Error {
+  readonly opid: string;
+
+  constructor(opid: string, timeoutMs: number) {
+    super(`operation ${opid} still pending after ${timeoutMs}ms`);
+    this.name = "OperationTimeoutError";
+    this.opid = opid;
+  }
+}

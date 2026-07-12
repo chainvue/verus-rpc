@@ -1,6 +1,56 @@
-// verus-rpc — public entry point.
+// verus-rpc — the npm-published, full-coverage, precision-honest TypeScript
+// client for talking to your own verusd.
 //
-// Surface grows per Etappe (transport, amounts, T1 methods land in 0.1.0);
-// see DESIGN.md. Invariant from day one: no float ever crosses this API for
-// a value field.
-export {};
+// Invariant: no float ever crosses this API for a value field. Curated (T1)
+// methods surface amounts as bigint satoshis; typed (T2) methods as exact
+// decimal strings; `call()` is the always-available escape hatch.
+
+export { formatAmount, parseAmount, SATS_PER_COIN, type ParseAmountOptions } from "./amount.js";
+export {
+  OperationFailedError,
+  OperationTimeoutError,
+  ResponseMappingError,
+  RpcErrorCode,
+  TransportError,
+  VerusRpcError,
+  type TransportFailureReason,
+} from "./errors.js";
+export { isLosslessNumber, LosslessNumber, toJsNumbers, toSafeNumbers } from "./lossless.js";
+export { DaemonTransport, type DaemonTransportConfig, type RpcTransport } from "./transport.js";
+export { withResilience, type ResilienceConfig } from "./resilience.js";
+export { MockTransport } from "./mock.js";
+export {
+  VerusClient,
+  type CallNumbersMode,
+  type CallOptions,
+  type VerusClientConfig,
+} from "./client.js";
+
+export { ChainApi, mapGetInfo, type GetInfoResult } from "./methods/chain.js";
+export {
+  IdentityApi,
+  mapGetIdentity,
+  mapIdentityDefinition,
+  type GetIdentityOptions,
+  type GetIdentityResult,
+  type IdentityDefinition,
+} from "./methods/identity.js";
+export {
+  WalletApi,
+  mapCurrencyBalance,
+  mapGetTransaction,
+  mapOperationStatus,
+  type GetBalanceOptions,
+  type GetCurrencyBalanceOptions,
+  type GetOperationStatusOptions,
+  type GetTransactionOptions,
+  type GetTransactionResult,
+  type OperationError,
+  type OperationResult,
+  type OperationStatus,
+  type SendCurrencyAndWaitOptions,
+  type SendCurrencyAndWaitResult,
+  type SendCurrencyOptions,
+  type SendCurrencyOutput,
+  type TransactionDetail,
+} from "./methods/wallet.js";
