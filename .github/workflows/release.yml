@@ -1,0 +1,133 @@
+# Release — publish verus-rpc to npm via OIDC trusted publishing.
+#
+# Trigger model: MANUAL (workflow_dispatch), main only. The release set is
+# "current package.json version not yet on the registry" — so the release
+# event is the version-bump commit on main, dispatched by hand. No tags to
+# keep in sync.
+#
+# Auth: npm trusted publishing (OIDC) — NO npm tokens anywhere. Requires the
+# one-time trusted-publisher registration on npmjs.com (package `verus-rpc`,
+# repo chainvue/verus-rpc, workflow filename `release.yml`). `id-token: write`
+# lets pnpm (>=10.9, native OIDC) exchange the Actions OIDC token for a
+# short-lived publish token; provenance is generated automatically for
+# trusted publishes from public repos (NPM_CONFIG_PROVENANCE is explicit
+# belt-and-suspenders).
+#
+# Deliberately NO `registry-url` on setup-node: it writes an .npmrc
+# `_authToken=${NODE_AUTH_TOKEN}` line that breaks when the env var is unset —
+# and with OIDC there is no token. pnpm publishes to registry.npmjs.org by
+# default.
+#
+# Process rule: after every publish, a from-registry install smoke installs
+# the just-published version from the PUBLIC registry into a fresh project and
+# imports it — catches anything workspace/local resolution would mask.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: build, test and pack, but do not publish"
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # OIDC token for npm trusted publishing
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      # Publishes the package if its version is not on the registry yet.
+      # --no-git-checks: Actions checks out a detached HEAD, which pnpm's
+      # branch check would otherwise reject.
+      - name: Publish
+        run: >-
+          pnpm publish --no-git-checks
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+
+  smoke:
+    needs: release
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          # npm-only job; without this, setup-node sees the packageManager
+          # field and demands a pnpm binary for its cache.
+
+      - name: Resolve version
+        id: v
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # Registry propagation can lag a few seconds after publish.
+      - name: Wait for registry
+        run: |
+          for i in $(seq 1 30); do
+            if npm view "verus-rpc@${{ steps.v.outputs.version }}" version >/dev/null 2>&1; then
+              echo "available"; exit 0
+            fi
+            echo "waiting for verus-rpc@${{ steps.v.outputs.version }} ($i)"; sleep 5
+          done
+          echo "version never appeared on registry"; exit 1
+
+      - name: Install from registry into a fresh project
+        run: |
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          npm init -y >/dev/null
+          npm pkg set type=module
+          npm install "verus-rpc@${{ steps.v.outputs.version }}"
+
+      - name: Import + read-only call
+        run: |
+          cd /tmp/smoke
+          cat > smoke.mjs <<'EOF'
+          import { VerusClient, formatAmount, parseAmount, MockTransport } from "verus-rpc";
+          if (parseAmount("2.00000000") !== 200000000n) throw new Error("parseAmount broken");
+          const mock = new MockTransport().respondJson("getblockcount", "42");
+          if ((await new VerusClient({ transport: mock }).chain.getBlockCount()) !== 42) throw new Error("mock broken");
+          const client = new VerusClient({ url: "https://api.verus.services", user: "public", pass: "public" });
+          const info = await client.chain.getInfo();
+          console.log("smoke ok:", info.VRSCversion, formatAmount(info.relayfee));
+          EOF
+          node smoke.mjs
