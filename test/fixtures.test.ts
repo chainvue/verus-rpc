@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { VerusRpcError } from "../src/errors.js";
 import { parseLossless } from "../src/lossless.js";
 import { mapGetInfo } from "../src/methods/chain.js";
-import { mapGetIdentity } from "../src/methods/identity.js";
+import { mapGetIdentity, mapIdentityDefinition, mapIdentityHistory, mapIdentityResult } from "../src/methods/identity.js";
 import {
   mapAddressGroupings,
   mapCurrencyBalance,
@@ -91,6 +91,28 @@ describe("fixture conformance", () => {
     expect(status.status).toBe("success");
     expect(status.result?.txid).toBeTypeOf("string");
     expect(status["execution_secs"]).toBe("0.037381236"); // fractional passthrough → exact string
+  });
+
+  it("getidentitycontent (recorded, mainnet)", () => {
+    const result = mapIdentityResult(fixtureResult("getidentitycontent.json"), "getidentitycontent");
+    expect(result.identity.identityaddress).toBe("i5v3h9FWVdRFbNHU7DfcpGykQjRaHtMqu7");
+    expect(result.identity.contentmultimap).toBeDefined();
+  });
+
+  it("getidentityhistory (recorded, mainnet)", () => {
+    const result = mapIdentityHistory(fixtureResult("getidentityhistory.json"));
+    expect(result.history.length).toBeGreaterThan(0);
+    for (const entry of result.history) {
+      expect(Number.isSafeInteger(entry.height)).toBe(true);
+      expect(entry.identity.name).toBe("Verus Coin Foundation");
+    }
+  });
+
+  it("getidentitieswithaddress (recorded, mainnet, truncated to 2 entries)", () => {
+    const result = fixtureResult("getidentitieswithaddress.json") as unknown[];
+    const identities = result.map((item, i) => mapIdentityDefinition(item, "getidentitieswithaddress", `[${i}]`));
+    expect(identities).toHaveLength(2);
+    expect(identities[0]!.primaryaddresses).toContain("REpxm9bCLMiHRNVPA9unPBWixie7uHFA5C");
   });
 
   it("listunspent (synthetic)", () => {

@@ -20,6 +20,9 @@ fixtures are parsed losslessly by the conformance suite, never through
 | `getwalletinfo.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Includes verus staking-balance fields as passthrough |
 | `listaddressgroupings.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Tuple-array shape |
 | `signmessage.json` | **synthetic** (shape from v402's verified usage) | 2026-07-12 | verusd returns `{hash, signature}`, not a bare string |
+| `getidentitycontent.json` | https://api.verus.services, `"Verus Coin Foundation@"` | 2026-07-12 | |
+| `getidentityhistory.json` | https://api.verus.services, `"Verus Coin Foundation@"` | 2026-07-12 | 15 history entries |
+| `getidentitieswithaddress.json` | https://api.verus.services (foundation primary address) | 2026-07-12 | Truncated from 3451 to 2 entries (int-only re-serialization, lossless); flat identity shape |
 
 T1 discipline: synthetic fixtures are a stopgap — the tier promise ("no T1
 method without a recorded fixture") is only fully honored once the wallet
