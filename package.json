@@ -40,7 +40,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm run build && pnpm run typecheck && pnpm run lint && pnpm run test"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
