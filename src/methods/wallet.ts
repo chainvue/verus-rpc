@@ -6,6 +6,8 @@ import {
   expectObject,
   mapAmount,
   mapAmountOptional,
+  mapBoolean,
+  mapBooleanOptional,
   mapInt,
   mapIntOptional,
   mapString,
@@ -13,6 +15,22 @@ import {
   withPassthrough,
 } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
+import type {
+  GetWalletInfoResult,
+  GroupedAddress,
+  ImportAddressOptions,
+  ImportPrivKeyOptions,
+  ListReceivedOptions,
+  ListTransactionsOptions,
+  ListUnspentOptions,
+  ListedTransaction,
+  ReceivedByAddressEntry,
+  SendManyOptions,
+  SignMessageOptions,
+  SignMessageResult,
+  UnspentOutput,
+  VerifyMessageOptions,
+} from "./wallet-types.js";
 
 export interface GetBalanceOptions {
   /** Only count transactions with at least this many confirmations. */
@@ -209,6 +227,85 @@ function mapOperationError(obj: Record<string, unknown>, ctx: { method: string; 
   });
 }
 
+export function mapUnspentOutput(raw: unknown, index: number): UnspentOutput {
+  const method = "listunspent";
+  const obj = expectObject(raw, method);
+  const ctx = (field: string) => ({ method, field: `[${index}].${field}` });
+  return withPassthrough<UnspentOutput>(obj, {
+    txid: mapString(obj["txid"], ctx("txid")),
+    vout: mapInt(obj["vout"], ctx("vout")),
+    address: mapStringOptional(obj["address"], ctx("address")),
+    scriptPubKey: mapStringOptional(obj["scriptPubKey"], ctx("scriptPubKey")),
+    amount: mapAmount(obj["amount"], ctx("amount")),
+    confirmations: mapInt(obj["confirmations"], ctx("confirmations")),
+    generated: mapBooleanOptional(obj["generated"], ctx("generated")),
+    spendable: mapBooleanOptional(obj["spendable"], ctx("spendable")),
+    redeemScript: mapStringOptional(obj["redeemScript"], ctx("redeemScript")),
+  });
+}
+
+export function mapListedTransaction(raw: unknown, index: number): ListedTransaction {
+  const method = "listtransactions";
+  const obj = expectObject(raw, method);
+  const ctx = (field: string) => ({ method, field: `[${index}].${field}` });
+  return withPassthrough<ListedTransaction>(obj, {
+    address: mapStringOptional(obj["address"], ctx("address")),
+    category: mapString(obj["category"], ctx("category")),
+    amount: mapAmount(obj["amount"], ctx("amount"), { signed: true }),
+    vout: mapIntOptional(obj["vout"], ctx("vout")),
+    fee: mapAmountOptional(obj["fee"], ctx("fee"), { signed: true }),
+    confirmations: mapIntOptional(obj["confirmations"], ctx("confirmations")),
+    blockhash: mapStringOptional(obj["blockhash"], ctx("blockhash")),
+    blockindex: mapIntOptional(obj["blockindex"], ctx("blockindex")),
+    blocktime: mapIntOptional(obj["blocktime"], ctx("blocktime")),
+    txid: mapStringOptional(obj["txid"], ctx("txid")),
+    time: mapInt(obj["time"], ctx("time")),
+    timereceived: mapIntOptional(obj["timereceived"], ctx("timereceived")),
+    comment: mapStringOptional(obj["comment"], ctx("comment")),
+    size: mapIntOptional(obj["size"], ctx("size")),
+  });
+}
+
+export function mapGetWalletInfo(raw: unknown): GetWalletInfoResult {
+  const method = "getwalletinfo";
+  const obj = expectObject(raw, method);
+  const ctx = (field: string) => ({ method, field });
+  return withPassthrough<GetWalletInfoResult>(obj, {
+    walletversion: mapInt(obj["walletversion"], ctx("walletversion")),
+    balance: mapAmount(obj["balance"], ctx("balance")),
+    unconfirmed_balance: mapAmount(obj["unconfirmed_balance"], ctx("unconfirmed_balance")),
+    immature_balance: mapAmount(obj["immature_balance"], ctx("immature_balance")),
+    txcount: mapInt(obj["txcount"], ctx("txcount")),
+    keypoololdest: mapIntOptional(obj["keypoololdest"], ctx("keypoololdest")),
+    keypoolsize: mapIntOptional(obj["keypoolsize"], ctx("keypoolsize")),
+    unlocked_until: mapIntOptional(obj["unlocked_until"], ctx("unlocked_until")),
+    paytxfee: mapAmountOptional(obj["paytxfee"], ctx("paytxfee")),
+    seedfp: mapStringOptional(obj["seedfp"], ctx("seedfp")),
+  });
+}
+
+export function mapAddressGroupings(raw: unknown): GroupedAddress[][] {
+  const method = "listaddressgroupings";
+  return expectArray(raw, method).map((group, g) =>
+    expectArray(group, method, `[${g}]`).map((entry, e) => {
+      const tuple = expectArray(entry, method, `[${g}][${e}]`);
+      const address = mapString(tuple[0], { method, field: `[${g}][${e}][0]` });
+      const amount = mapAmount(tuple[1], { method, field: `[${g}][${e}][1]` });
+      const account = mapStringOptional(tuple[2], { method, field: `[${g}][${e}][2]` });
+      return account === undefined ? { address, amount } : { address, amount, account };
+    }),
+  );
+}
+
+export function mapSignMessage(raw: unknown): SignMessageResult {
+  const method = "signmessage";
+  const obj = expectObject(raw, method);
+  return withPassthrough<SignMessageResult>(obj, {
+    hash: mapString(obj["hash"], { method, field: "hash" }),
+    signature: mapString(obj["signature"], { method, field: "signature" }),
+  });
+}
+
 function serializeOutput(output: SendCurrencyOutput): Record<string, unknown> {
   const raw: Record<string, unknown> = {
     address: output.address,
@@ -327,5 +424,195 @@ export class WalletApi {
       }
       await sleep(Math.min(interval, remaining));
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // T1 — wallet family (Etappe 2)
+
+  /** Unspent transparent outputs — amounts as bigint sats. */
+  async listUnspent(options?: ListUnspentOptions): Promise<UnspentOutput[]> {
+    const params: unknown[] = [];
+    const needMax = options?.maxConf !== undefined || options?.addresses !== undefined;
+    if (options?.minConf !== undefined || needMax) params.push(options.minConf ?? 1);
+    if (needMax) params.push(options.maxConf ?? 9_999_999);
+    if (options?.addresses !== undefined) params.push(options.addresses);
+    const result = expectArray(await this.transport.request("listunspent", params), "listunspent");
+    return result.map((item, i) => mapUnspentOutput(item, i));
+  }
+
+  /** Most recent wallet transactions — amounts as bigint sats. */
+  async listTransactions(options?: ListTransactionsOptions): Promise<ListedTransaction[]> {
+    const params: unknown[] = [];
+    const needFrom = options?.from !== undefined || options?.includeWatchOnly !== undefined;
+    if (options?.count !== undefined || needFrom) {
+      // Positional daemon params: the deprecated account slot must be "*".
+      params.push("*", options.count ?? 10);
+    }
+    if (needFrom) params.push(options.from ?? 0);
+    if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
+    const result = expectArray(await this.transport.request("listtransactions", params), "listtransactions");
+    return result.map((item, i) => mapListedTransaction(item, i));
+  }
+
+  /** Send to multiple transparent recipients in one transaction. Returns the txid. */
+  async sendMany(options: SendManyOptions): Promise<string> {
+    const amounts: Record<string, unknown> = {};
+    for (const [address, sats] of Object.entries(options.amounts)) {
+      amounts[address] = new LosslessNumber(formatAmount(sats));
+    }
+    // Positional: the deprecated account slot must be "".
+    const params: unknown[] = ["", amounts];
+    const needComment = options.comment !== undefined || options.subtractFeeFrom !== undefined;
+    if (options.minConf !== undefined || needComment) params.push(options.minConf ?? 1);
+    if (needComment) params.push(options.comment ?? "");
+    if (options.subtractFeeFrom !== undefined) params.push(options.subtractFeeFrom);
+    return mapString(await this.transport.request("sendmany", params), { method: "sendmany", field: "(result)" });
+  }
+
+  /** New transparent receiving address. */
+  async getNewAddress(): Promise<string> {
+    return mapString(await this.transport.request("getnewaddress", []), {
+      method: "getnewaddress",
+      field: "(result)",
+    });
+  }
+
+  /** New transparent change address. */
+  async getRawChangeAddress(): Promise<string> {
+    return mapString(await this.transport.request("getrawchangeaddress", []), {
+      method: "getrawchangeaddress",
+      field: "(result)",
+    });
+  }
+
+  /** Wallet state — balances as bigint sats. */
+  async getWalletInfo(): Promise<GetWalletInfoResult> {
+    return mapGetWalletInfo(await this.transport.request("getwalletinfo", []));
+  }
+
+  /** Unconfirmed native-currency balance — bigint sats. */
+  async getUnconfirmedBalance(): Promise<bigint> {
+    return mapAmount(await this.transport.request("getunconfirmedbalance", []), {
+      method: "getunconfirmedbalance",
+      field: "(result)",
+    });
+  }
+
+  /** Address clusters with common ownership — amounts as bigint sats. */
+  async listAddressGroupings(): Promise<GroupedAddress[][]> {
+    return mapAddressGroupings(await this.transport.request("listaddressgroupings", []));
+  }
+
+  /** Sign a message with an address key or identity. */
+  async signMessage(options: SignMessageOptions): Promise<SignMessageResult> {
+    const params: unknown[] = [options.signer, options.message];
+    if (options.currentSignature !== undefined) params.push(options.currentSignature);
+    return mapSignMessage(await this.transport.request("signmessage", params));
+  }
+
+  /**
+   * Verify a message signature. For identity signers, set
+   * `checkLatest: true` unless you specifically need historical validity —
+   * see `VerifyMessageOptions`.
+   */
+  async verifyMessage(options: VerifyMessageOptions): Promise<boolean> {
+    const params: unknown[] = [options.signer, options.signature, options.message];
+    if (options.checkLatest !== undefined) params.push(options.checkLatest);
+    return mapBoolean(await this.transport.request("verifymessage", params), {
+      method: "verifymessage",
+      field: "(result)",
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // T2 — typed (value fields as exact decimal strings)
+
+  /** T2 helper: request + safe-number conversion + typed cast. */
+  private async t2<T>(method: string, params: unknown[]): Promise<T> {
+    return toSafeNumbers(await this.transport.request(method, params)) as T;
+  }
+
+  /** Received totals per address. T2 — amounts as exact decimal strings. */
+  async listReceivedByAddress(options?: ListReceivedOptions): Promise<ReceivedByAddressEntry[]> {
+    const params: unknown[] = [];
+    const needEmpty = options?.includeEmpty !== undefined || options?.includeWatchOnly !== undefined;
+    if (options?.minConf !== undefined || needEmpty) params.push(options.minConf ?? 1);
+    if (needEmpty) params.push(options.includeEmpty ?? false);
+    if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
+    return this.t2("listreceivedbyaddress", params);
+  }
+
+  /** Total received by one address. T2 — exact decimal string. */
+  async getReceivedByAddress(options: { address: string; minConf?: number }): Promise<string> {
+    const params: unknown[] = [options.address];
+    if (options.minConf !== undefined) params.push(options.minConf);
+    const result = await this.t2<string | number>("getreceivedbyaddress", params);
+    return typeof result === "number" ? String(result) : result;
+  }
+
+  /**
+   * LEGACY (accounts era, deprecated upstream): balances per account label.
+   * T2 — amounts as exact decimal strings. Prefer identities/addresses.
+   */
+  async listAccounts(options?: { minConf?: number; includeWatchOnly?: boolean }): Promise<Record<string, string>> {
+    const params: unknown[] = [];
+    if (options?.minConf !== undefined || options?.includeWatchOnly !== undefined) {
+      params.push(options.minConf ?? 1);
+    }
+    if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
+    const raw = await this.t2<Record<string, string | number>>("listaccounts", params);
+    const out: Record<string, string> = {};
+    for (const [account, amount] of Object.entries(raw)) out[account] = String(amount);
+    return out;
+  }
+
+  // -------------------------------------------------------------------------
+  // T2 — key material & backups. NEVER logged, never fixture-recorded with
+  // real key material (mock-only tests). Handle results as secrets.
+
+  /** Import a WIF private key into the wallet. Slow when rescanning. */
+  async importPrivKey(options: ImportPrivKeyOptions): Promise<void> {
+    const params: unknown[] = [options.privateKey];
+    if (options.label !== undefined || options.rescan !== undefined) params.push(options.label ?? "");
+    if (options.rescan !== undefined) params.push(options.rescan);
+    await this.transport.request("importprivkey", params);
+  }
+
+  /** Watch an address or script without its key. */
+  async importAddress(options: ImportAddressOptions): Promise<void> {
+    const params: unknown[] = [options.address];
+    if (options.label !== undefined || options.rescan !== undefined) params.push(options.label ?? "");
+    if (options.rescan !== undefined) params.push(options.rescan);
+    await this.transport.request("importaddress", params);
+  }
+
+  /** Import keys from a `dumpwallet` file (server-side path). */
+  async importWallet(options: { filename: string }): Promise<void> {
+    await this.transport.request("importwallet", [options.filename]);
+  }
+
+  /** SECRET: WIF private key for an address. Do not log the result. */
+  async dumpPrivKey(options: { address: string }): Promise<string> {
+    return mapString(await this.transport.request("dumpprivkey", [options.address]), {
+      method: "dumpprivkey",
+      field: "(result)",
+    });
+  }
+
+  /** Dump all wallet keys to a server-side file. Returns the full path. */
+  async dumpWallet(options: { filename: string }): Promise<string> {
+    const result = await this.transport.request("dumpwallet", [options.filename]);
+    // Older daemons return the path as a plain string, newer as {filename}.
+    if (typeof result === "string") return result;
+    const obj = expectObject(result, "dumpwallet");
+    return mapString(obj["filename"], { method: "dumpwallet", field: "filename" });
+  }
+
+  /** Copy wallet.dat to a server-side destination. Returns the full path. */
+  async backupWallet(options: { destination: string }): Promise<string> {
+    return mapString(await this.transport.request("backupwallet", [options.destination]), {
+      method: "backupwallet",
+      field: "(result)",
+    });
   }
 }

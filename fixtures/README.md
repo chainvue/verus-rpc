@@ -15,6 +15,11 @@ fixtures are parsed losslessly by the conformance suite, never through
 | `gettransaction.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Wallet-only — not exposed on the public gateway |
 | `sendcurrency.json` | **synthetic** (opid shape) | 2026-07-12 | Write-method: record once from a deliberate VRSCTEST dust send |
 | `z_getoperationstatus.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Replace with the recording of the same dust send |
+| `listunspent.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Wallet-only; includes dust + `interest` passthrough field |
+| `listtransactions.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Wallet-only |
+| `getwalletinfo.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Includes verus staking-balance fields as passthrough |
+| `listaddressgroupings.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Tuple-array shape |
+| `signmessage.json` | **synthetic** (shape from v402's verified usage) | 2026-07-12 | verusd returns `{hash, signature}`, not a bare string |
 
 T1 discipline: synthetic fixtures are a stopgap — the tier promise ("no T1
 method without a recorded fixture") is only fully honored once the wallet

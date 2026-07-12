@@ -11,7 +11,16 @@ import { VerusRpcError } from "../src/errors.js";
 import { parseLossless } from "../src/lossless.js";
 import { mapGetInfo } from "../src/methods/chain.js";
 import { mapGetIdentity } from "../src/methods/identity.js";
-import { mapCurrencyBalance, mapGetTransaction, mapOperationStatus } from "../src/methods/wallet.js";
+import {
+  mapAddressGroupings,
+  mapCurrencyBalance,
+  mapGetTransaction,
+  mapGetWalletInfo,
+  mapListedTransaction,
+  mapOperationStatus,
+  mapSignMessage,
+  mapUnspentOutput,
+} from "../src/methods/wallet.js";
 import { mapAmount, mapInt, mapString } from "../src/mapping.js";
 import { DaemonTransport } from "../src/transport.js";
 
@@ -82,6 +91,41 @@ describe("fixture conformance", () => {
     expect(status.status).toBe("success");
     expect(status.result?.txid).toBeTypeOf("string");
     expect(status["execution_secs"]).toBe("0.037381236"); // fractional passthrough → exact string
+  });
+
+  it("listunspent (synthetic)", () => {
+    const result = fixtureResult("listunspent.json") as unknown[];
+    const utxos = result.map((item, i) => mapUnspentOutput(item, i));
+    expect(utxos[0]!.amount).toBe(200_000_000n);
+    expect(utxos[1]!.amount).toBe(1n); // dust
+    expect(utxos[0]!["interest"]).toBe("0.00000000"); // unknown value field stays exact
+  });
+
+  it("listtransactions (synthetic)", () => {
+    const result = fixtureResult("listtransactions.json") as unknown[];
+    const txs = result.map((item, i) => mapListedTransaction(item, i));
+    expect(txs[0]!.amount).toBe(200_000_000n);
+    expect(txs[1]!.amount).toBe(-10_000_000n);
+    expect(txs[1]!.fee).toBe(-10_000n);
+  });
+
+  it("getwalletinfo (synthetic)", () => {
+    const info = mapGetWalletInfo(fixtureResult("getwalletinfo.json"));
+    expect(info.balance).toBe(210_000_000n);
+    expect(info.paytxfee).toBe(10_000n);
+    expect(info["eligible_staking_balance"]).toBe("0.00000000");
+  });
+
+  it("listaddressgroupings (synthetic)", () => {
+    const groups = mapAddressGroupings(fixtureResult("listaddressgroupings.json"));
+    expect(groups[0]![0]!.amount).toBe(200_000_000n);
+    expect(groups[1]![0]!.amount).toBe(0n);
+  });
+
+  it("signmessage (synthetic)", () => {
+    const result = mapSignMessage(fixtureResult("signmessage.json"));
+    expect(result.hash.length).toBeGreaterThan(0);
+    expect(result.signature.length).toBeGreaterThan(0);
   });
 
   it("daemon error body (recorded gateway rejection)", async () => {
