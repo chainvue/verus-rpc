@@ -14,4 +14,7 @@ coverage/
 # Unsanitized fixture recordings (raw daemon output before scrubbing)
 fixtures-raw/
 
+# Live write-harness captures (local run output, never committed)
+test-artifacts/
+
 .DS_Store

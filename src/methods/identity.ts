@@ -1,5 +1,5 @@
 import { formatAmount } from "../amount.js";
-import { OperationTimeoutError } from "../errors.js";
+import { OperationTimeoutError, RpcErrorCode, VerusRpcError } from "../errors.js";
 import { LosslessNumber, toSafeNumbers } from "../lossless.js";
 import {
   expectArray,
@@ -126,20 +126,26 @@ export interface IdentitiesByAuthorityQuery {
  */
 export type IndexedIdentity = IdentityDefinition;
 
-/** Identity JSON accepted by register/update/recover — daemon field names. */
+/**
+ * Identity JSON accepted by register/update/recover — daemon field names.
+ * Optionals include `| undefined` so a getidentity result's `.identity`
+ * (an `IdentityDefinition`) can be passed straight back for the natural
+ * "read → modify → write" round-trip under exactOptionalPropertyTypes.
+ * contentmap values are hex strings on the wire.
+ */
 export interface IdentitySpec {
   name: string;
-  parent?: string;
-  primaryaddresses?: string[];
-  minimumsignatures?: number;
-  revocationauthority?: string;
-  recoveryauthority?: string;
-  privateaddress?: string;
-  contentmap?: Record<string, string>;
-  contentmultimap?: Record<string, unknown>;
-  timelock?: number;
-  version?: number;
-  flags?: number;
+  parent?: string | undefined;
+  primaryaddresses?: string[] | undefined;
+  minimumsignatures?: number | undefined;
+  revocationauthority?: string | undefined;
+  recoveryauthority?: string | undefined;
+  privateaddress?: string | undefined;
+  contentmap?: Record<string, unknown> | undefined;
+  contentmultimap?: Record<string, unknown> | undefined;
+  timelock?: number | undefined;
+  version?: number | undefined;
+  flags?: number | undefined;
   [key: string]: unknown;
 }
 
@@ -531,8 +537,19 @@ export class IdentityApi {
 
     const deadline = Date.now() + timeout;
     for (;;) {
-      const tx = mapGetTransaction(await this.transport.request("gettransaction", [commitment.txid]));
-      if (tx.confirmations >= 1) break;
+      let confirmed = false;
+      try {
+        const tx = mapGetTransaction(await this.transport.request("gettransaction", [commitment.txid]));
+        confirmed = tx.confirmations >= 1;
+      } catch (err) {
+        // Right after broadcast the commitment tx is not yet in the wallet, so
+        // the daemon answers -5 (invalid/non-wallet txid). Treat that as "not
+        // confirmed yet" and keep polling; rethrow anything else.
+        if (!(err instanceof VerusRpcError && err.code === RpcErrorCode.RPC_INVALID_ADDRESS_OR_KEY)) {
+          throw err;
+        }
+      }
+      if (confirmed) break;
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
         throw new OperationTimeoutError(commitment.txid, timeout);

@@ -248,4 +248,5 @@ Verus BitGo fork. Use them together.
 
 ## License
 
-Apache-2.0
+Copyright 2026 Robert Lech (chainvue). Licensed under Apache-2.0 — see
+[LICENSE](./LICENSE) and [NOTICE](./NOTICE).

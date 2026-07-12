@@ -1,6 +1,6 @@
 /** Etappe 3 — identity family: reads, lifecycle, registration flow, T2 signatures. */
 import { describe, expect, it } from "vitest";
-import { OperationTimeoutError } from "../src/errors.js";
+import { OperationTimeoutError, VerusRpcError } from "../src/errors.js";
 import { isLosslessNumber } from "../src/lossless.js";
 import { IdentityApi } from "../src/methods/identity.js";
 import { MockTransport } from "../src/mock.js";
@@ -108,6 +108,25 @@ describe("identity lifecycle", () => {
     await expect(identity.recoverIdentity({ identity: { name: "x" } })).resolves.toBe("rec-tx");
   });
 
+  it("updateIdentity round-trips a full getidentity result (read → modify → write)", async () => {
+    const { mock, identity } = setup();
+    mock.respondJson("getidentity", `{"identity":${IDENTITY_DEF},"status":"active"}`);
+    mock.respond("updateidentity", "up-tx");
+
+    // The daemon needs the complete identity object back (identityaddress,
+    // systemid, flags, version…), not a stripped spec — so this is the
+    // canonical usage. contentmap holds unknown-typed values from the read.
+    const current = await identity.getIdentity({ nameOrAddress: "x@" });
+    const txid = await identity.updateIdentity({
+      identity: { ...current.identity, contentmap: { iKey: "ab".repeat(32) } },
+    });
+    expect(txid).toBe("up-tx");
+    const sent = mock.calls.find((c) => c.method === "updateidentity")!.params[0] as Record<string, unknown>;
+    expect(sent["identityaddress"]).toBe("iAddr");
+    expect(sent["systemid"]).toBe("iSystem");
+    expect(sent["contentmap"]).toEqual({ iKey: "ab".repeat(32) });
+  });
+
   it("setIdentityTimelock demands exactly one lock mode", async () => {
     const { mock, identity } = setup();
     mock.respond("setidentitytimelock", "lock-tx");
@@ -139,6 +158,30 @@ describe("identity lifecycle", () => {
       txid: "commit-tx",
       identity: { name: "myname", primaryaddresses: ["RCtrl"], minimumsignatures: 1 },
     });
+  });
+
+  it("registerIdentityFlow tolerates the transient gettransaction -5 (tx not yet in wallet)", async () => {
+    const { mock, identity } = setup();
+    mock.respondJson("registernamecommitment", COMMITMENT);
+    // Right after broadcast the daemon can't find the commitment tx yet.
+    mock.respondError("gettransaction", -5, "Invalid or non-wallet transaction id");
+    mock.respondError("gettransaction", -5, "Invalid or non-wallet transaction id");
+    mock.respondJson("gettransaction", '{"amount":0,"confirmations":1,"txid":"commit-tx","time":1,"timereceived":1,"details":[]}');
+    mock.respond("registeridentity", "reg-tx");
+
+    await expect(
+      identity.registerIdentityFlow({ name: "myname", controlAddress: "RCtrl", pollIntervalMs: 1 }),
+    ).resolves.toMatchObject({ registrationTxid: "reg-tx" });
+    expect(mock.calls.filter((c) => c.method === "gettransaction")).toHaveLength(3);
+  });
+
+  it("registerIdentityFlow rethrows a non-transient daemon error during the poll", async () => {
+    const { mock, identity } = setup();
+    mock.respondJson("registernamecommitment", COMMITMENT);
+    mock.respondError("gettransaction", -8, "Invalid parameter");
+    await expect(
+      identity.registerIdentityFlow({ name: "myname", controlAddress: "RCtrl", pollIntervalMs: 1 }),
+    ).rejects.toThrow(VerusRpcError);
   });
 
   it("registerIdentityFlow times out when the commitment never confirms", async () => {
