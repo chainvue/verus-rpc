@@ -93,8 +93,10 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 26
-          # npm-only job; without this, setup-node sees the packageManager
-          # field and demands a pnpm binary for its cache.
+          # npm-only job: disable package-manager caching so setup-node does
+          # not try to invoke pnpm (from the checked-out packageManager field),
+          # which isn't installed here.
+          package-manager-cache: false
 
       - name: Resolve version
         id: v
