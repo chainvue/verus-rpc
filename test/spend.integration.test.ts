@@ -22,8 +22,10 @@ import {
   liveConfig,
   sanitizeAndRecordFixtures,
   uniqueTestName,
+  waitForBalance,
   waitForConfirmation,
   waitForIdentity,
+  waitForOffer,
   writeArtifacts,
   type CapturingTransport,
 } from "./support/live.js";
@@ -74,7 +76,11 @@ describe.skipIf(!(cfg.hasUrl && cfg.allowSpend))("live write harness (VRSCTEST, 
       expect(txid).toHaveLength(64);
       const tx = await client.wallet.getTransaction({ txid });
       expect(typeof tx.amount).toBe("bigint");
-      summary["sendCurrency"] = { dest, opid, txid };
+      // On-chain effect: the fresh dest actually received exactly the dust.
+      await waitForConfirmation(client, txid, { minConf: 1, timeoutMs: T_SEND - MIN });
+      const bal = await waitForBalance(client, dest, DUST, { timeoutMs: T_SEND - MIN });
+      expect(bal["VRSCTEST"]).toBe(DUST);
+      summary["sendCurrency"] = { dest, opid, txid, destBalance: bal["VRSCTEST"]?.toString() };
     },
     T_SEND,
   );
@@ -87,6 +93,11 @@ describe.skipIf(!(cfg.hasUrl && cfg.allowSpend))("live write harness (VRSCTEST, 
       const txid = await client.wallet.sendMany({ amounts: { [a]: DUST, [b]: DUST } });
       expect(txid).toHaveLength(64);
       await waitForConfirmation(client, txid, { minConf: 1, timeoutMs: T_SEND - MIN });
+      // On-chain effect: each fresh recipient received exactly the dust.
+      const balA = await waitForBalance(client, a, DUST, { timeoutMs: T_SEND - MIN });
+      const balB = await waitForBalance(client, b, DUST, { timeoutMs: T_SEND - MIN });
+      expect(balA["VRSCTEST"]).toBe(DUST);
+      expect(balB["VRSCTEST"]).toBe(DUST);
       summary["sendMany"] = { recipients: [a, b], txid };
     },
     T_SEND,
@@ -184,7 +195,11 @@ describe.skipIf(!(cfg.hasUrl && cfg.allowSpend))("live write harness (VRSCTEST, 
           pollIntervalMs: 5_000,
         });
         expect(txid).toHaveLength(64);
-        summary["shielded"] = { from: funded.address, to: zaddr, txid };
+        // On-chain effect: the fresh z-address received exactly the dust.
+        await waitForConfirmation(client, txid, { minConf: 1, timeoutMs: T_BEST_EFFORT - MIN });
+        const zbal = await client.shielded.zGetBalance({ address: zaddr, minConf: 1 });
+        expect(parseAmount(zbal)).toBe(DUST);
+        summary["shielded"] = { from: funded.address, to: zaddr, txid, zBalance: zbal };
       } catch (err) {
         console.log(`[spend] D best-effort z_sendmany did not complete: ${err instanceof Error ? err.message : String(err)}`);
         summary["shielded"] = { skipped: String(err) };
@@ -206,15 +221,22 @@ describe.skipIf(!(cfg.hasUrl && cfg.allowSpend))("live write harness (VRSCTEST, 
           offer: {
             changeaddress: change,
             expiryheight: info.blocks + 200,
-            // Offer dust VRSCTEST, ask for dust of a token the wallet knows;
-            // the "for" side needs a valid destination address.
-            offer: { currency: "VRSCTEST", amount: new LosslessNumber("0.0001") },
+            // Offer a small (above-dust) amount of VRSCTEST, ask for dust of a
+            // token the wallet knows. The offered amount must exceed the network
+            // fee by more than the dust threshold — closeoffers reclaims
+            // (offered − fee) with no extra inputs, so an exactly-dust offer
+            // (0.0001) yields a dust reclaim output the daemon rejects, leaking
+            // the offer. The "for" ask needs only a valid destination address.
+            offer: { currency: "VRSCTEST", amount: new LosslessNumber("0.001") },
             for: { address: receive, currency: "ownora", amount: new LosslessNumber("0.0001") },
           },
         });
         offerTxid = typeof res["txid"] === "string" ? res["txid"] : undefined;
         expect(offerTxid).toBeTypeOf("string");
-        summary["marketplace"] = { offerTxid };
+        // On-chain effect: the offer actually shows up in this wallet's open
+        // offers before we cancel it.
+        await waitForOffer(client, offerTxid!, true, { timeoutMs: T_BEST_EFFORT - MIN });
+        summary["marketplace"] = { offerTxid, appeared: true };
       } catch (err) {
         console.log(`[spend] E makeOffer rejected: ${err instanceof Error ? err.message : String(err)}`);
         summary["marketplace"] = { skipped: String(err) };
@@ -223,6 +245,8 @@ describe.skipIf(!(cfg.hasUrl && cfg.allowSpend))("live write harness (VRSCTEST, 
         if (offerTxid !== undefined) {
           try {
             await client.currency.closeOffers({ offerTxids: [offerTxid] });
+            // On-chain effect: the offer is gone from open offers after close.
+            await waitForOffer(client, offerTxid, false, { timeoutMs: T_BEST_EFFORT - MIN });
             console.log(`[spend] E closed offer ${offerTxid}`);
           } catch (err) {
             console.log(`[spend] E closeOffers failed: ${err instanceof Error ? err.message : String(err)}`);

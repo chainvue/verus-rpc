@@ -103,6 +103,37 @@ export async function waitForConfirmation(
   }
 }
 
+/**
+ * Poll getcurrencybalance until `address` holds exactly `expectedSats` of
+ * `currency`. Fresh wallet addresses start at 0 and — because the sender pays
+ * the fee — end at exactly the dust amount, so this is a deterministic
+ * assertion with no fee math. Returns the final balance map.
+ */
+export async function waitForBalance(
+  client: VerusClient,
+  address: string,
+  expectedSats: bigint,
+  opts?: { currency?: string; minConf?: number; timeoutMs?: number; pollMs?: number },
+): Promise<Record<string, bigint>> {
+  const currency = opts?.currency ?? "VRSCTEST";
+  const minConf = opts?.minConf ?? 1;
+  const timeoutMs = opts?.timeoutMs ?? 300_000;
+  const pollMs = opts?.pollMs ?? 5_000;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const balances = await client.wallet.getCurrencyBalance({ address, minConf });
+      if ((balances[currency] ?? 0n) === expectedSats) return balances;
+    } catch {
+      // address not indexed yet — keep polling
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`address ${address} did not reach ${expectedSats} sats of ${currency} within ${timeoutMs}ms`);
+    }
+    await sleep(pollMs);
+  }
+}
+
 /** Poll getidentity until `predicate` holds (registration, revoke, recover). */
 export async function waitForIdentity(
   client: VerusClient,
@@ -122,6 +153,35 @@ export async function waitForIdentity(
     }
     if (Date.now() > deadline) {
       throw new Error(`identity ${nameOrId} did not reach the expected state within ${timeoutMs}ms`);
+    }
+    await sleep(pollMs);
+  }
+}
+
+/**
+ * Poll listopenoffers until `offerTxid`'s presence matches `present`. The offer
+ * JSON is polymorphic, so this does a shape-agnostic containment check over the
+ * serialized result (LosslessNumber nodes are flattened first so stringify is
+ * safe). Used to prove an offer appeared then disappeared on-chain.
+ */
+export async function waitForOffer(
+  client: VerusClient,
+  offerTxid: string,
+  present: boolean,
+  opts?: { timeoutMs?: number; pollMs?: number },
+): Promise<void> {
+  const timeoutMs = opts?.timeoutMs ?? 300_000;
+  const pollMs = opts?.pollMs ?? 5_000;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const offers = await client.currency.listOpenOffers();
+      if (JSON.stringify(toSafeNumbers(offers)).includes(offerTxid) === present) return;
+    } catch {
+      // listopenoffers not ready — keep polling
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`offer ${offerTxid} ${present ? "did not appear" : "did not disappear"} within ${timeoutMs}ms`);
     }
     await sleep(pollMs);
   }
