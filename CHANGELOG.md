@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0
+
+Public lite-wallet node support (Track P0 for Peculium).
+
+- **Feature (`DaemonTransport` / `VerusClient`):** `user`/`pass` are now
+  optional — omit both to talk to unauthenticated public gateways
+  (`https://api.verustest.net`, `https://api.verus.services`). No
+  `Authorization` header is sent when credentials are omitted; providing only
+  one of the two throws a `TypeError`.
+- **Docs/behavior note:** public gateways whitelist only the light-client
+  method set (`getaddressutxos`, `getaddressbalance`, `getidentity`,
+  `getcurrency`, `getrawtransaction`, `sendrawtransaction`, ...). Wallet
+  methods answer with a JSON-RPC "Method not found" error; the client
+  deliberately does not pre-filter.
+- **Test:** new gated public-node smoke (`VERUS_RPC_PUBLIC_URL`), exercising
+  the credential-less path against a live public testnet gateway, including
+  the documented wallet-method rejection.
+
+No breaking changes.
+
 ## 0.1.1
 
 Fixes surfaced by end-to-end validation against a live VRSCTEST daemon.
