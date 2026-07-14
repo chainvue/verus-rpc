@@ -1,5 +1,12 @@
 # Changelog
 
+# [0.3.0](https://github.com/chainvue/verus-rpc/compare/v0.2.0...v0.3.0) (2026-07-14)
+
+
+### Features
+
+* expand typed RPC coverage (+24 methods) and reconcile positioning ([612a01e](https://github.com/chainvue/verus-rpc/commit/612a01e22ae0ad40092828c5c67c98eace9727c5))
+
 ## 0.2.0 (2026-07-13) — public lite-wallet node support
 
 Public lite-wallet node support (Track P0 for Peculium).
