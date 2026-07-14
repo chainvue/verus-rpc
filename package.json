@@ -42,6 +42,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:live": "vitest run test/integration.test.ts test/spend.integration.test.ts test/public-node.integration.test.ts",
     "prepublishOnly": "pnpm run build && pnpm run typecheck && pnpm run lint && pnpm run test"
   },
@@ -51,6 +52,7 @@
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^10.0.1",
     "@types/node": "^26.1.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.7.0",
     "globals": "^17.7.0",
     "semantic-release": "^25.0.7",
