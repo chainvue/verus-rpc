@@ -1,8 +1,9 @@
 # @chainvue/verus-rpc
 
-A typed TypeScript client for the Verus daemon (`verusd`) JSON-RPC interface —
-the whole surface, with **amounts you can trust** (`bigint` satoshis, never a
-float).
+A typed TypeScript client for the Verus daemon (`verusd`) JSON-RPC interface,
+with **amounts you can trust** (`bigint` satoshis, never a float). Every daemon
+RPC method is reachable via `call()`; the common surface — wallet, identity,
+currency, shielded, blockchain, addressindex — is curated with precise types.
 
 ```bash
 npm i @chainvue/verus-rpc

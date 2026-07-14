@@ -15,6 +15,7 @@ import {
   withPassthrough,
 } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
+import { requestT2 } from "./t2.js";
 import type {
   GetWalletInfoResult,
   GroupedAddress,
@@ -612,6 +613,153 @@ export class WalletApi {
   async backupWallet(options: { destination: string }): Promise<string> {
     return mapString(await this.transport.request("backupwallet", [options.destination]), {
       method: "backupwallet",
+      field: "(result)",
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Wallet reads + output locks (coverage expansion). T2.
+
+  /**
+   * Transactions since a block (wallet sync). All params optional. T2 —
+   * amount fields surface as exact decimal strings.
+   */
+  async listSinceBlock(options?: {
+    blockHash?: string;
+    targetConfirmations?: number;
+    includeWatchOnly?: boolean;
+  }): Promise<Record<string, unknown>> {
+    const params: unknown[] = [];
+    const needConf = options?.targetConfirmations !== undefined || options?.includeWatchOnly !== undefined;
+    if (options?.blockHash !== undefined || needConf) params.push(options?.blockHash ?? "");
+    if (needConf) params.push(options?.targetConfirmations ?? 1);
+    if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
+    return requestT2(this.transport, "listsinceblock", params);
+  }
+
+  /**
+   * Lock or unlock unspent outputs so they are (not) used by automatic
+   * coin selection. Returns whether the update succeeded.
+   */
+  async lockUnspent(options: {
+    unlock: boolean;
+    outputs?: { txid: string; vout: number }[];
+  }): Promise<boolean> {
+    const params: unknown[] = [options.unlock];
+    if (options.outputs !== undefined) {
+      params.push(options.outputs.map((o) => ({ txid: o.txid, vout: o.vout })));
+    }
+    return mapBoolean(await this.transport.request("lockunspent", params), {
+      method: "lockunspent",
+      field: "(result)",
+    });
+  }
+
+  /** Currently locked (reserved-from-selection) outputs. T2. */
+  async listLockUnspent(): Promise<unknown[]> {
+    return requestT2(this.transport, "listlockunspent", []);
+  }
+
+  // -------------------------------------------------------------------------
+  // Spends. T1 — amounts are bigint sats, encoded losslessly (never a float).
+
+  /**
+   * Send `amount` (bigint sats) to a transparent address via the daemon
+   * wallet. Returns the txid. The daemon holds and uses the keys; no key
+   * material crosses this API.
+   */
+  async sendToAddress(options: {
+    address: string;
+    amount: bigint;
+    comment?: string;
+    commentTo?: string;
+    subtractFeeFromAmount?: boolean;
+  }): Promise<string> {
+    const params: unknown[] = [options.address, new LosslessNumber(formatAmount(options.amount))];
+    // Positional daemon params: comment / comment-to / subtractfee.
+    const needCommentTo = options.commentTo !== undefined || options.subtractFeeFromAmount !== undefined;
+    const needComment = options.comment !== undefined || needCommentTo;
+    if (needComment) params.push(options.comment ?? "");
+    if (needCommentTo) params.push(options.commentTo ?? "");
+    if (options.subtractFeeFromAmount !== undefined) params.push(options.subtractFeeFromAmount);
+    return mapString(await this.transport.request("sendtoaddress", params), {
+      method: "sendtoaddress",
+      field: "(result)",
+    });
+  }
+
+  /**
+   * Send `amount` (bigint sats) from a (legacy) account to a transparent
+   * address. Returns the txid. `fromAccount` defaults to the "" account.
+   */
+  async sendFrom(options: {
+    toAddress: string;
+    amount: bigint;
+    fromAccount?: string;
+    minConf?: number;
+    comment?: string;
+    commentTo?: string;
+  }): Promise<string> {
+    const params: unknown[] = [
+      options.fromAccount ?? "",
+      options.toAddress,
+      new LosslessNumber(formatAmount(options.amount)),
+    ];
+    const needCommentTo = options.commentTo !== undefined;
+    const needComment = options.comment !== undefined || needCommentTo;
+    const needMinConf = options.minConf !== undefined || needComment;
+    if (needMinConf) params.push(options.minConf ?? 1);
+    if (needComment) params.push(options.comment ?? "");
+    if (needCommentTo) params.push(options.commentTo ?? "");
+    return mapString(await this.transport.request("sendfrom", params), {
+      method: "sendfrom",
+      field: "(result)",
+    });
+  }
+
+  /**
+   * Set the wallet's per-kB transaction fee (bigint sats). Returns whether
+   * the update succeeded.
+   */
+  async setTxFee(options: { amount: bigint }): Promise<boolean> {
+    return mapBoolean(
+      await this.transport.request("settxfee", [new LosslessNumber(formatAmount(options.amount))]),
+      { method: "settxfee", field: "(result)" },
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Wallet encryption / unlock. Key-bearing: the passphrase is used once and
+  // never returned. Do not log arguments.
+
+  /**
+   * SECRET (passphrase): unlock the encrypted wallet for `timeout` seconds so
+   * spends can be signed. Do not log the passphrase.
+   */
+  async walletPassphrase(options: { passphrase: string; timeout: number }): Promise<void> {
+    await this.transport.request("walletpassphrase", [options.passphrase, options.timeout]);
+  }
+
+  /** Re-lock the wallet immediately (drops the cached passphrase). */
+  async walletLock(): Promise<void> {
+    await this.transport.request("walletlock", []);
+  }
+
+  /**
+   * SECRET (passphrase): change the wallet passphrase. Do not log arguments.
+   */
+  async walletPassphraseChange(options: { oldPassphrase: string; newPassphrase: string }): Promise<void> {
+    await this.transport.request("walletpassphrasechange", [options.oldPassphrase, options.newPassphrase]);
+  }
+
+  /**
+   * SECRET (passphrase): encrypt a previously-unencrypted wallet. Returns the
+   * daemon's advisory message (a restart is typically required). Do not log
+   * the passphrase.
+   */
+  async encryptWallet(options: { passphrase: string }): Promise<string> {
+    return mapString(await this.transport.request("encryptwallet", [options.passphrase]), {
+      method: "encryptwallet",
       field: "(result)",
     });
   }

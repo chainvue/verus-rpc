@@ -1,9 +1,11 @@
-// verus-rpc — the npm-published, full-coverage, precision-honest TypeScript
-// client for talking to your own verusd.
+// verus-rpc — the npm-published, precision-honest TypeScript client for
+// talking to your own verusd. Every daemon RPC method is reachable; the common
+// surface is curated with precise types.
 //
 // Invariant: no float ever crosses this API for a value field. Curated (T1)
 // methods surface amounts as bigint satoshis; typed (T2) methods as exact
-// decimal strings; `call()` is the always-available escape hatch.
+// decimal strings; `call()` is the always-available escape hatch that reaches
+// every daemon method — typed or not — so coverage never blocks you.
 
 export { formatAmount, parseAmount, SATS_PER_COIN, type ParseAmountOptions } from "./amount.js";
 export {

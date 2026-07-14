@@ -267,4 +267,46 @@ export class ShieldedApi {
     const params: unknown[] = options?.operationIds === undefined ? [] : [options.operationIds];
     return requestT2(this.transport, "z_getoperationresult", params);
   }
+
+  /**
+   * All known async-operation ids, optionally filtered by status
+   * (`queued` | `executing` | `success` | `failed` | `cancelled`). T2.
+   */
+  async zListOperationIds(options?: { status?: string }): Promise<string[]> {
+    const params: unknown[] = options?.status === undefined ? [] : [options.status];
+    return mapStringArray(await this.transport.request("z_listoperationids", params), {
+      method: "z_listoperationids",
+      field: "(result)",
+    });
+  }
+
+  /**
+   * SECRET: export the spending key for a shielded address. Do not log the
+   * result. `outputAsHex` returns the raw hex form instead of the bech32 key.
+   */
+  async zExportKey(options: { zaddr: string; outputAsHex?: boolean }): Promise<string> {
+    const params: unknown[] = [options.zaddr];
+    if (options.outputAsHex !== undefined) params.push(options.outputAsHex);
+    return mapString(await this.transport.request("z_exportkey", params), {
+      method: "z_exportkey",
+      field: "(result)",
+    });
+  }
+
+  /**
+   * SECRET (key): import a shielded spending key into the wallet. Do not log
+   * the key. `rescan` controls history rescanning (`whenkeyisnew` default).
+   */
+  async zImportKey(options: {
+    zkey: string;
+    rescan?: "yes" | "no" | "whenkeyisnew";
+    startHeight?: number;
+  }): Promise<Record<string, unknown>> {
+    const params: unknown[] = [options.zkey];
+    if (options.rescan !== undefined || options.startHeight !== undefined) {
+      params.push(options.rescan ?? "whenkeyisnew");
+    }
+    if (options.startHeight !== undefined) params.push(options.startHeight);
+    return requestT2(this.transport, "z_importkey", params);
+  }
 }

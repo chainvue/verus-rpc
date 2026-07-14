@@ -180,4 +180,65 @@ export class BlockchainApi {
     const result = await requestT2<unknown>(this.transport, "estimatefee", [options.blocks]);
     return typeof result === "string" ? result : String(result);
   }
+
+  // -------------------------------------------------------------------------
+  // Additional blockchain / rawtransaction reads (coverage expansion).
+  // All read-only; no money leaves the wallet through these.
+
+  /** Best-chain tip hash. T1. */
+  async getBestBlockHash(): Promise<string> {
+    return mapString(await this.transport.request("getbestblockhash", []), {
+      method: "getbestblockhash",
+      field: "(result)",
+    });
+  }
+
+  /**
+   * Block header. `verbose` (default true) → object; false → raw hex string.
+   * T2.
+   */
+  async getBlockHeader(options: {
+    hash: string;
+    verbose?: boolean;
+  }): Promise<Record<string, unknown> | string> {
+    const params: unknown[] = [options.hash];
+    if (options.verbose !== undefined) params.push(options.verbose);
+    return requestT2(this.transport, "getblockheader", params);
+  }
+
+  /**
+   * Mempool contents. `verbose` false (default) → array of txids; true →
+   * object keyed by txid with fee/size detail. T2.
+   */
+  async getRawMempool(options?: {
+    verbose?: boolean;
+  }): Promise<string[] | Record<string, unknown>> {
+    const params: unknown[] = options?.verbose === undefined ? [] : [options.verbose];
+    return requestT2(this.transport, "getrawmempool", params);
+  }
+
+  /** Mempool size/usage summary. T2. */
+  async getMempoolInfo(): Promise<Record<string, unknown>> {
+    return requestT2(this.transport, "getmempoolinfo", []);
+  }
+
+  /** Known chain tips (active + orphaned branches). T2. */
+  async getChainTips(): Promise<unknown[]> {
+    return requestT2(this.transport, "getchaintips", []);
+  }
+
+  /** Proof-of-work difficulty. T2 — non-integer value surfaces as a string. */
+  async getDifficulty(): Promise<number | string> {
+    return requestT2(this.transport, "getdifficulty", []);
+  }
+
+  /** Decode a raw transaction hex into its JSON object. T2. */
+  async decodeRawTransaction(options: { hex: string }): Promise<Record<string, unknown>> {
+    return requestT2(this.transport, "decoderawtransaction", [options.hex]);
+  }
+
+  /** Decode a hex script into its assembly + addresses. T2. */
+  async decodeScript(options: { hex: string }): Promise<Record<string, unknown>> {
+    return requestT2(this.transport, "decodescript", [options.hex]);
+  }
 }

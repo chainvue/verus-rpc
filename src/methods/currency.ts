@@ -505,4 +505,40 @@ export class CurrencyApi {
   async getInitialCurrencyState(options: { currency: string }): Promise<Record<string, unknown>> {
     return requestT2(this.transport, "getinitialcurrencystate", [options.currency]);
   }
+
+  // -------------------------------------------------------------------------
+  // Cross-chain exports / imports / pending transfers (PBaaS). T2.
+
+  /** Cross-chain exports to `chainName` in an optional height range. T2. */
+  async getExports(options: {
+    chainName: string;
+    heightStart?: number;
+    heightEnd?: number;
+  }): Promise<unknown[]> {
+    const params: unknown[] = [options.chainName];
+    if (options.heightStart !== undefined || options.heightEnd !== undefined) {
+      params.push(options.heightStart ?? 0);
+    }
+    if (options.heightEnd !== undefined) params.push(options.heightEnd);
+    return requestT2(this.transport, "getexports", params);
+  }
+
+  /** Cross-chain imports from `chainName` in an optional height range. T2. */
+  async getImports(options: {
+    chainName: string;
+    startHeight?: number;
+    endHeight?: number;
+  }): Promise<unknown[]> {
+    const params: unknown[] = [options.chainName];
+    if (options.startHeight !== undefined || options.endHeight !== undefined) {
+      params.push(options.startHeight ?? 0);
+    }
+    if (options.endHeight !== undefined) params.push(options.endHeight);
+    return requestT2(this.transport, "getimports", params);
+  }
+
+  /** Pending reserve transfers queued for `chainName`. T2. */
+  async getPendingTransfers(options: { chainName: string }): Promise<unknown[]> {
+    return requestT2(this.transport, "getpendingtransfers", [options.chainName]);
+  }
 }
