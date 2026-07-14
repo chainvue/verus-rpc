@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.2.0
+Format follows [Keep a Changelog](https://keepachangelog.com): newest first,
+one section per released version headed `## <version> (<date>) — <summary>`.
+Record changes under **[Unreleased]** as you make them; at release, rename that
+heading to the version. This file is adopter-facing ("what changed, what
+breaks") — design rationale lives in RISKS.md.
+
+## [Unreleased]
+
+<!-- Add entries here in the same commit as the change; rename this heading to
+     the new version at release time. -->
+
+## 0.2.0 (2026-07-13) — public lite-wallet node support
 
 Public lite-wallet node support (Track P0 for Peculium).
 
@@ -20,7 +31,7 @@ Public lite-wallet node support (Track P0 for Peculium).
 
 No breaking changes.
 
-## 0.1.1
+## 0.1.1 (2026-07-12) — live-daemon validation fixes
 
 Fixes surfaced by end-to-end validation against a live VRSCTEST daemon.
 
@@ -38,7 +49,7 @@ Fixes surfaced by end-to-end validation against a live VRSCTEST daemon.
 
 No public API changes.
 
-## 0.1.0
+## 0.1.0 (2026-07-12) — first release
 
 First release. Precision-honest, full-coverage TypeScript client for the Verus
 (`verusd`) JSON-RPC interface — see the README.
