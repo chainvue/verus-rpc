@@ -1,9 +1,10 @@
-# CLAUDE.md — verus-rpc
+# CLAUDE.md — @chainvue/verus-rpc
 
-A **minimal, deliberately v402-scoped** TypeScript client for the Verus
-(`verusd`) JSON-RPC interface. It is NOT a general-purpose Verus client — that
-is a separate future project (`@chainvue/verus-rpc` scope is reserved for it).
-Keep the surface small; resist scope creep.
+A **full-coverage, precision-honest** TypeScript client for the Verus
+(`verusd`) JSON-RPC interface — daemon-first, npm-published. This is the
+general-purpose Verus client (distinct from v402's deliberately minimal,
+in-repo `@chainvue/v402-verus-rpc`). Published as `@chainvue/verus-rpc` (renamed
+from the unscoped `verus-rpc`, 2026-07-15).
 
 ## Correctness — load-bearing
 - **Precision-honest**: satoshi amounts are `bigint`; never route money through

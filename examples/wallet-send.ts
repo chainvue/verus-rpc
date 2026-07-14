@@ -7,7 +7,7 @@
  *   VERUS_RPC_USER=... VERUS_RPC_PASS=... \
  *   npx tsx examples/wallet-send.ts "destination@"
  */
-import { formatAmount, parseAmount, VerusClient } from "verus-rpc";
+import { formatAmount, parseAmount, VerusClient } from "@chainvue/verus-rpc";
 
 const url = process.env["VERUS_RPC_URL"];
 if (url === undefined) {

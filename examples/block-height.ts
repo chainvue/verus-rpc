@@ -3,7 +3,7 @@
  *
  *   npx tsx examples/block-height.ts
  */
-import { VerusClient } from "verus-rpc";
+import { VerusClient } from "@chainvue/verus-rpc";
 
 const client = new VerusClient({ url: "https://api.verus.services", user: "public", pass: "public" });
 

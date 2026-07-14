@@ -1,6 +1,6 @@
 /**
  * Examples-as-tests: guards the read-only examples against import/API drift.
- * The three mainnet examples import `verus-rpc` (self-reference → dist) and
+ * The three mainnet examples import `@chainvue/verus-rpc` (self-reference → dist) and
  * run a live call; gated on VERUS_RPC_MAINNET_SMOKE so the offline suite
  * stays hermetic. This is the "no drift-prone hand copies" guarantee — the
  * example files ARE what runs.

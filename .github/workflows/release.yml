@@ -11,8 +11,13 @@
 #      git tag + GitHub release.
 # No releasable commits → no-op. Use the workflow_dispatch dry-run to preview.
 #
-# Auth: npm trusted publishing (OIDC), same registration as before (package
-# `verus-rpc`, repo chainvue/verus-rpc, workflow `release.yml`). @semantic-
+# Auth: npm trusted publishing (OIDC). Trusted-publisher registration is per
+# PACKAGE NAME — the rename to `@chainvue/verus-rpc` needs a NEW registration
+# (package `@chainvue/verus-rpc`, repo chainvue/verus-rpc, workflow
+# `release.yml`); the old `verus-rpc` registration does not carry over. The
+# first publish of the new scoped name is manual (browser flow); OIDC covers
+# every subsequent version. Scoped packages default to `access: restricted`, so
+# publishConfig.access + `pnpm publish --access public` keep it public. @semantic-
 # release/npm runs with npmPublish:false — it never needs NPM_TOKEN; the exec
 # plugin's `pnpm publish` does the token-less OIDC publish.
 #
@@ -111,15 +116,15 @@ jobs:
       # existing latest (cheap, harmless).
       - name: Resolve latest published version
         id: v
-        run: echo "version=$(npm view verus-rpc version)" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(npm view @chainvue/verus-rpc version)" >> "$GITHUB_OUTPUT"
 
       - name: Wait for registry
         run: |
           for i in $(seq 1 30); do
-            if npm view "verus-rpc@${{ steps.v.outputs.version }}" version >/dev/null 2>&1; then
+            if npm view "@chainvue/verus-rpc@${{ steps.v.outputs.version }}" version >/dev/null 2>&1; then
               echo "available"; exit 0
             fi
-            echo "waiting for verus-rpc@${{ steps.v.outputs.version }} ($i)"; sleep 5
+            echo "waiting for @chainvue/verus-rpc@${{ steps.v.outputs.version }} ($i)"; sleep 5
           done
           echo "version never appeared on registry"; exit 1
 
@@ -128,13 +133,13 @@ jobs:
           mkdir -p /tmp/smoke && cd /tmp/smoke
           npm init -y >/dev/null
           npm pkg set type=module
-          npm install "verus-rpc@${{ steps.v.outputs.version }}"
+          npm install "@chainvue/verus-rpc@${{ steps.v.outputs.version }}"
 
       - name: Import + read-only call
         run: |
           cd /tmp/smoke
           cat > smoke.mjs <<'EOF'
-          import { VerusClient, formatAmount, parseAmount, MockTransport } from "verus-rpc";
+          import { VerusClient, formatAmount, parseAmount, MockTransport } from "@chainvue/verus-rpc";
           if (parseAmount("2.00000000") !== 200000000n) throw new Error("parseAmount broken");
           const mock = new MockTransport().respondJson("getblockcount", "42");
           if ((await new VerusClient({ transport: mock }).chain.getBlockCount()) !== 42) throw new Error("mock broken");

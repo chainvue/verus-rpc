@@ -1,5 +1,5 @@
 {
-  "name": "verus-rpc",
+  "name": "@chainvue/verus-rpc",
   "version": "0.2.0",
   "description": "Full-coverage, precision-honest TypeScript client for the Verus (verusd) JSON-RPC interface — daemon-first, npm-published.",
   "license": "Apache-2.0",
@@ -21,6 +21,9 @@
     "dist",
     "NOTICE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "sideEffects": false,
   "keywords": [
     "verus",

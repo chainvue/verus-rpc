@@ -4,7 +4,7 @@
  *
  *   npx tsx examples/read-identity.ts "Verus Coin Foundation@"
  */
-import { VerusClient } from "verus-rpc";
+import { VerusClient } from "@chainvue/verus-rpc";
 
 const name = process.argv[2] ?? "Verus Coin Foundation@";
 

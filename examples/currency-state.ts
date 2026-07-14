@@ -5,7 +5,7 @@
  *
  *   npx tsx examples/currency-state.ts Bridge.vETH
  */
-import { formatAmount, VerusClient } from "verus-rpc";
+import { formatAmount, VerusClient } from "@chainvue/verus-rpc";
 
 const currency = process.argv[2] ?? "Bridge.vETH";
 

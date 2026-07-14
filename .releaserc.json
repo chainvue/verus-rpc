@@ -54,7 +54,7 @@
     [
       "@semantic-release/exec",
       {
-        "publishCmd": "pnpm publish --no-git-checks"
+        "publishCmd": "pnpm publish --no-git-checks --access public"
       }
     ],
     [

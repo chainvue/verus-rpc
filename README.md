@@ -1,15 +1,15 @@
-# verus-rpc
+# @chainvue/verus-rpc
 
 A typed TypeScript client for the Verus daemon (`verusd`) JSON-RPC interface —
 the whole surface, with **amounts you can trust** (`bigint` satoshis, never a
 float).
 
 ```bash
-npm i verus-rpc
+npm i @chainvue/verus-rpc
 ```
 
 ```ts
-import { VerusClient } from "verus-rpc";
+import { VerusClient } from "@chainvue/verus-rpc";
 
 // Public nodes need no credentials:
 // https://api.verus.services (mainnet) · https://api.verustest.net (VRSCTEST)
@@ -37,7 +37,7 @@ path. This client parses losslessly: curated methods return **`bigint`
 satoshis**, and two helpers convert to/from the human form.
 
 ```ts
-import { parseAmount, formatAmount } from "verus-rpc";
+import { parseAmount, formatAmount } from "@chainvue/verus-rpc";
 
 const balance = await client.wallet.getBalance(); // 923_514_291_611n
 formatAmount(balance);                            // "9235.14291611"
@@ -66,7 +66,7 @@ method, typed or not.
 Typed by kind, so you can branch cleanly:
 
 ```ts
-import { VerusRpcError, TransportError, RpcErrorCode } from "verus-rpc";
+import { VerusRpcError, TransportError, RpcErrorCode } from "@chainvue/verus-rpc";
 
 try {
   await client.wallet.sendCurrencyAndWait({ /* … */ });
