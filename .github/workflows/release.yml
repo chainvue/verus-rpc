@@ -1,33 +1,33 @@
-# Release — publish verus-rpc to npm via OIDC trusted publishing.
+# Release — automated via semantic-release (Conventional Commits).
 #
-# Trigger model: MANUAL (workflow_dispatch), main only. The release set is
-# "current package.json version not yet on the registry" — so the release
-# event is the version-bump commit on main, dispatched by hand. No tags to
-# keep in sync.
+# Trigger model: ZERO-TOUCH. Every push to `main` runs semantic-release; it
+# analyzes the commits since the last `v*` tag and, IF there is a releasable
+# change (feat → minor, fix → patch, `!`/BREAKING → major), it:
+#   1. computes the next version and updates package.json + CHANGELOG.md,
+#   2. publishes to npm via the PROVEN OIDC path — semantic-release owns
+#      versioning only; the actual publish is `pnpm publish` (exec plugin), so
+#      no NPM token is needed and provenance is generated (id-token: write),
+#   3. commits the bump + changelog back to main ([skip ci]) and creates the
+#      git tag + GitHub release.
+# No releasable commits → no-op. Use the workflow_dispatch dry-run to preview.
 #
-# Auth: npm trusted publishing (OIDC) — NO npm tokens anywhere. Requires the
-# one-time trusted-publisher registration on npmjs.com (package `verus-rpc`,
-# repo chainvue/verus-rpc, workflow filename `release.yml`). `id-token: write`
-# lets pnpm (>=10.9, native OIDC) exchange the Actions OIDC token for a
-# short-lived publish token; provenance is generated automatically for
-# trusted publishes from public repos (NPM_CONFIG_PROVENANCE is explicit
-# belt-and-suspenders).
+# Auth: npm trusted publishing (OIDC), same registration as before (package
+# `verus-rpc`, repo chainvue/verus-rpc, workflow `release.yml`). @semantic-
+# release/npm runs with npmPublish:false — it never needs NPM_TOKEN; the exec
+# plugin's `pnpm publish` does the token-less OIDC publish.
 #
-# Deliberately NO `registry-url` on setup-node: it writes an .npmrc
-# `_authToken=${NODE_AUTH_TOKEN}` line that breaks when the env var is unset —
-# and with OIDC there is no token. pnpm publishes to registry.npmjs.org by
-# default.
-#
-# Process rule: after every publish, a from-registry install smoke installs
-# the just-published version from the PUBLIC registry into a fresh project and
-# imports it — catches anything workspace/local resolution would mask.
+# Requires: `main` must allow the GITHUB_TOKEN to push the release commit + tag
+# (semantic-release pushes back). If main is protection-locked to PRs, grant
+# the token a bypass or move to a release-PR model.
 name: Release
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Dry run: build, test and pack, but do not publish"
+        description: "Dry run: compute the next version + notes, but do not publish or tag"
         type: boolean
         default: false
 
@@ -39,14 +39,17 @@ permissions: {}
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: read
-      id-token: write # OIDC token for npm trusted publishing
+      contents: write # semantic-release pushes the release commit + tag
+      id-token: write # OIDC token for npm trusted publishing (provenance)
+      issues: write # github plugin may comment on released issues
+      pull-requests: write # github plugin may comment on released PRs
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # full history + tags: semantic-release needs them
 
       - uses: pnpm/action-setup@v4
 
@@ -70,19 +73,17 @@ jobs:
       - name: Test
         run: pnpm test
 
-      # Publishes the package if its version is not on the registry yet.
-      # --no-git-checks: Actions checks out a detached HEAD, which pnpm's
-      # branch check would otherwise reject.
-      - name: Publish
+      - name: Release
         run: >-
-          pnpm publish --no-git-checks
-          ${{ inputs.dry_run && '--dry-run' || '' }}
+          pnpm exec semantic-release
+          ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
 
   smoke:
     needs: release
-    if: ${{ !inputs.dry_run }}
+    if: ${{ github.event_name == 'push' || !inputs.dry_run }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -94,15 +95,16 @@ jobs:
         with:
           node-version: 26
           # npm-only job: disable package-manager caching so setup-node does
-          # not try to invoke pnpm (from the checked-out packageManager field),
-          # which isn't installed here.
+          # not try to invoke pnpm (from the checked-out packageManager field).
           package-manager-cache: false
 
-      - name: Resolve version
+      # Validate whatever is CURRENTLY latest on the registry — if this run
+      # published, that's the new version; if it was a no-op, it re-checks the
+      # existing latest (cheap, harmless).
+      - name: Resolve latest published version
         id: v
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(npm view verus-rpc version)" >> "$GITHUB_OUTPUT"
 
-      # Registry propagation can lag a few seconds after publish.
       - name: Wait for registry
         run: |
           for i in $(seq 1 30); do
