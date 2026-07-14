@@ -2,30 +2,24 @@
   "branches": ["main"],
   "tagFormat": "v${version}",
   "plugins": [
-    "@semantic-release/commit-analyzer",
-    "@semantic-release/release-notes-generator",
-    [
-      "@semantic-release/changelog",
-      { "changelogFile": "CHANGELOG.md" }
-    ],
-    [
-      "@semantic-release/npm",
-      { "npmPublish": false }
-    ],
-    [
-      "@semantic-release/exec",
-      { "publishCmd": "pnpm publish --no-git-checks" }
-    ],
-    [
-      "@semantic-release/git",
-      {
-        "assets": ["package.json", "CHANGELOG.md"],
-        "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
-      }
-    ],
-    [
-      "@semantic-release/github",
-      { "successComment": false, "failComment": false, "releasedLabels": false }
-    ]
+    ["@semantic-release/commit-analyzer", {
+      "preset": "conventionalcommits",
+      "releaseRules": [
+        { "breaking": true, "release": "minor" },
+        { "type": "feat", "release": "minor" },
+        { "type": "fix", "release": "patch" },
+        { "type": "perf", "release": "patch" },
+        { "type": "revert", "release": "patch" }
+      ]
+    }],
+    ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
+    ["@semantic-release/changelog", { "changelogFile": "CHANGELOG.md" }],
+    ["@semantic-release/npm", { "npmPublish": false }],
+    ["@semantic-release/exec", { "publishCmd": "pnpm publish --no-git-checks" }],
+    ["@semantic-release/git", {
+      "assets": ["package.json", "CHANGELOG.md"],
+      "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+    }],
+    ["@semantic-release/github", { "successComment": false, "failComment": false, "releasedLabels": false }]
   ]
 }
