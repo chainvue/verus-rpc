@@ -1,0 +1,110 @@
+name: 🐛 Bug report
+description: A method returns wrong data, throws unexpectedly, or types are off
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Never paste real WIF keys, passphrases, z-keys, RPC passwords, or mainnet addresses holding funds** — redact them. Suspected security issues → report privately (see the security link on the new-issue page), not here.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What's wrong?
+      description: What happened vs. what you expected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest snippet that shows it. Prefer `MockTransport` if the bug isn't daemon-specific — it makes the repro runnable for us.
+      render: typescript
+      value: |
+        import { VerusClient } from "@chainvue/verus-rpc";
+
+        const client = new VerusClient({ url: "...", user: "...", pass: "..." });
+        const r = await client./* ... */;
+        // expected: …
+        // got: …
+    validations:
+      required: true
+
+  - type: input
+    id: method
+    attributes:
+      label: RPC method(s) involved
+      placeholder: getcurrency, sendcurrency
+    validations:
+      required: false
+
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Which access tier?
+      description: T1 = curated mapper + fixture · T2 = requestT2 (decimal strings) · T3 = raw call()
+      options:
+        - "T1 — curated method (e.g. client.chain.getInfo())"
+        - "T2 — requestT2()"
+        - "T3 — call()"
+        - Not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: precision
+    attributes:
+      label: Precision
+      description: The whole point of this client is precision-honest amounts.
+      options:
+        - label: This involves a money/amount/value field (satoshis, currency amounts, supply, fees)
+          required: false
+        - label: I saw a JS float / rounding / precision loss (e.g. an amount came back as `number` or lost digits)
+          required: false
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Connection mode
+      options:
+        - Authenticated (user + pass)
+        - Unauthenticated public gateway (no credentials)
+        - MockTransport (no daemon)
+    validations:
+      required: true
+
+  - type: input
+    id: pkg-version
+    attributes:
+      label: "@chainvue/verus-rpc version"
+      placeholder: 0.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Node version & OS
+      description: Requires Node ≥ 22.
+      placeholder: Node 22.4.0 / macOS 14
+    validations:
+      required: true
+
+  - type: input
+    id: daemon
+    attributes:
+      label: verusd version & chain
+      description: Only if it reproduces against a live daemon.
+      placeholder: 1.2.17-1, VRSCTEST
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error / stack trace
+      description: Full error, including the `code`/`reason` if it's a `VerusRpcError` / `TransportError`. **Redact any key material.**
+      render: shell
+    validations:
+      required: false

@@ -1,0 +1,66 @@
+name: 📇 RPC method coverage
+description: Request a verusd method be added or promoted to a higher tier
+labels: ["coverage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This client aims for **full coverage** of the verusd JSON-RPC surface. Use this to request a method that's missing a curated (T1) or T2 wrapper — or to report a signature that's wrong. Any method is already callable via `client.call()` (T3) today.
+
+  - type: input
+    id: method
+    attributes:
+      label: Method name(s)
+      placeholder: getaddressbalance, z_getbalance
+    validations:
+      required: true
+
+  - type: dropdown
+    id: current
+    attributes:
+      label: Current state
+      options:
+        - Missing entirely
+        - Works via call() (T3) but wants a typed wrapper
+        - Has a wrapper but the signature/param order is wrong
+        - Has a wrapper but an amount is mishandled (precision)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: desired-tier
+    attributes:
+      label: Desired tier
+      description: T1 = curated mapper + recorded fixture · T2 = requestT2 with decimal strings · T3 = raw call() is enough
+      options:
+        - "T1 — curated mapper + fixture"
+        - "T2 — requestT2"
+        - "T3 — call() is fine, just document it"
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: verusd source / docs reference
+      description: Link to the `CRPCCommand` entry or the API docs so the signature can be verified, not guessed.
+      placeholder: https://github.com/VerusCoin/VerusCoin/blob/master/src/rpc/…
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: amounts
+    attributes:
+      label: Amounts
+      options:
+        - label: This method returns or accepts money/value fields (must be bigint satoshis / exact decimal strings, never float)
+          required: false
+
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use case
+      description: What are you building that needs it? Helps prioritize.
+    validations:
+      required: true

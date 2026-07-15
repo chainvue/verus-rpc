@@ -1,0 +1,56 @@
+name: ✨ Feature request
+description: A client capability that isn't about a specific RPC method
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For adding/fixing a specific verusd method, use **RPC method coverage** instead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What's hard or impossible with the client today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Transport / auth (credentials, public gateways, timeouts)
+        - Resilience (retries, circuit breaker — cockatiel)
+        - Amount / precision handling (bigint, lossless-json)
+        - Mapping / tiers (T1/T2/T3, fixtures)
+        - Types / DX (public API, generics, inference)
+        - Testing (MockTransport, fixtures)
+        - Docs
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This preserves precision-honesty (no money through JS `number`)
+          required: false
+        - label: This is a breaking change to the public API
+          required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Security vulnerability
+    url: https://github.com/chainvue/verus-rpc/security/advisories/new
+    about: Report key-handling, credential, or precision-safety vulnerabilities privately — do NOT open a public issue.
+  - name: 📖 Verus RPC API reference
+    url: https://api.verus.services/
+    about: Questions about what a verusd method does (its own behavior, not this client) belong in the Verus docs.
