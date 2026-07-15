@@ -1,7 +1,7 @@
 {
   "name": "@chainvue/verus-rpc",
   "version": "0.3.0",
-  "description": "Full-coverage, precision-honest TypeScript client for the Verus (verusd) JSON-RPC interface — daemon-first, npm-published.",
+  "description": "Precision-honest TypeScript client for the Verus (verusd) JSON-RPC interface — daemon-first, npm-published. Every daemon method reachable via call(); the common surface is curated with precise types.",
   "license": "Apache-2.0",
   "author": "Robert Lech",
   "repository": {
