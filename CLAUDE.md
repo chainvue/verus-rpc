@@ -28,4 +28,5 @@ Conventional Commits drive **semantic-release**. **Never hand-edit
 an explicit ask.
 
 ## Decision log
-`RISKS.md` = maintainer-facing "why"; `CHANGELOG.md` = adopter-facing "what".
+The maintainer-facing "why" (risks, decisions) is kept **privately, outside
+this repo**; `CHANGELOG.md` is the adopter-facing "what".

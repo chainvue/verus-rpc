@@ -1,5 +1,8 @@
-# Private planning doc — never committed (v402/Peculium convention, see RISKS.md)
+# Private maintainer notes — never committed (kept locally, outside the public repo)
 PLAN.md
+DESIGN.md
+RESEARCH.md
+RISKS.md
 
 node_modules/
 dist/
