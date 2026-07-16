@@ -54,7 +54,8 @@
     [
       "@semantic-release/exec",
       {
-        "publishCmd": "pnpm publish --no-git-checks --access public"
+        "publishCmd": "pnpm publish --no-git-checks --access public",
+        "successCmd": "echo \"version=${nextRelease.version}\" >> \"$GITHUB_OUTPUT\""
       }
     ],
     [
