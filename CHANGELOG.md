@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/chainvue/verus-rpc/compare/v0.5.0...v0.5.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **wallet:** success-without-txid is shape drift — unify both AndWait paths on ResponseMappingError ([5328ee0](https://github.com/chainvue/verus-rpc/commit/5328ee0051ec9402327413d99c8db561cf95ddde))
+* **wallet:** throw OperationFailedError on success-without-txid, align with zSendManyAndWait ([dead756](https://github.com/chainvue/verus-rpc/commit/dead756b9fd97b49ecfe1974e6463a7075373fe7))
+
 # [0.5.0](https://github.com/chainvue/verus-rpc/compare/v0.4.0...v0.5.0) (2026-07-16)
 
 
