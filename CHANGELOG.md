@@ -1,5 +1,31 @@
 # Changelog
 
+# [0.4.0](https://github.com/chainvue/verus-rpc/compare/v0.3.0...v0.4.0) (2026-07-16)
+
+
+* feat(transport)!: abort-signal threading, auth classification, fail-closed HTTP handling ([dd8029c](https://github.com/chainvue/verus-rpc/commit/dd8029c842c545c77dc900d5eec30681d380907e))
+* fix(rpc)!: correct daemon param shapes and money-path serialization ([151016a](https://github.com/chainvue/verus-rpc/commit/151016adb9b10c77778934d6963a53e476f204ff))
+* fix(transport)!: review findings — 'aborted' reason, fail-closed body reads, auth-first classification ([343fc32](https://github.com/chainvue/verus-rpc/commit/343fc32ef91fc01124373154e1fd0e7295f57e59))
+
+
+### Bug Fixes
+
+* **pkg:** ship src/ so published source maps resolve; add npm metadata ([7197346](https://github.com/chainvue/verus-rpc/commit/7197346503fe17e1d241a27d4c996e5c56c450b0))
+
+
+### BREAKING CHANGES
+
+* TransportFailureReason gains 'aborted'; caller-signal
+cancellations now surface with reason 'aborted' instead of 'timeout'.
+* TransportFailureReason gains 'auth' (exhaustive
+switches must handle it); the VerusClient constructor throws on
+config combinations it previously ignored silently.
+* RawTransactionOptions.outputs is a single
+Record<string, unknown> (was an array); getVdxfId's parent option is
+replaced by vdxfKey/uint256/indexNum; getCurrencyConverters takes an
+options object; estimateFee returns string | null. All four replace
+behavior that was broken or silently wrong against a real daemon.
+
 # [0.3.0](https://github.com/chainvue/verus-rpc/compare/v0.2.0...v0.3.0) (2026-07-14)
 
 
