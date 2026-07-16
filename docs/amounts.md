@@ -32,12 +32,13 @@ like reserve weights and conversion prices — one convention everywhere.
 ## Helpers
 
 ```ts
-import { parseAmount, formatAmount, SATS_PER_COIN } from "verus-rpc";
+import { parseAmount, formatAmount, amountParam, SATS_PER_COIN } from "@chainvue/verus-rpc";
 
 parseAmount("2.00000000")      // 200_000_000n
 parseAmount("1e-6")            // 100n   (scientific notation on the wire)
 parseAmount("-0.1", { allowNegative: true })  // -10_000_000n
 formatAmount(200_000_000n)     // "2.00000000"
+amountParam(200_000_000n)      // LosslessNumber — serializes as the exact token 2.00000000
 ```
 
 `parseAmount` rejects negatives by default and throws on sub-satoshi

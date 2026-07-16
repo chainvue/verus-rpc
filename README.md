@@ -38,12 +38,15 @@ path. This client parses losslessly: curated methods return **`bigint`
 satoshis**, and two helpers convert to/from the human form.
 
 ```ts
-import { parseAmount, formatAmount } from "@chainvue/verus-rpc";
+import { parseAmount, formatAmount, amountParam } from "@chainvue/verus-rpc";
 
 const balance = await client.wallet.getBalance(); // 923_514_291_611n
 formatAmount(balance);                            // "9235.14291611"
 parseAmount("1.5");                               // 150_000_000n
 ```
+
+Sending an amount through the untyped `call()` escape hatch? `amountParam(sats)`
+produces the exact number token the daemon expects — never a float.
 
 ## What's on the client
 
@@ -75,12 +78,18 @@ try {
   if (err instanceof VerusRpcError && err.code === RpcErrorCode.RPC_WALLET_INSUFFICIENT_FUNDS) {
     // the daemon said no — not enough funds
   } else if (err instanceof TransportError) {
-    // couldn't reach the node / timed out
+    // err.reason: "network" | "timeout" | "auth" | "aborted" | "bad-response" | "circuit-open"
   }
 }
 ```
 
-Async sends also throw `OperationFailedError` / `OperationTimeoutError`.
+`TransportError.reason` distinguishes node trouble from client-side
+conditions: `auth` (HTTP 401/403 — bad rpcuser/rpcpassword) and `aborted`
+(your `AbortSignal` cancelled the call) never count toward the circuit
+breaker. Async sends also throw `OperationFailedError` /
+`OperationTimeoutError`; the `…AndWait` helpers tolerate transient transport
+failures while polling — an in-flight operation is never abandoned — and a
+deadline hit surfaces the last poll failure as `cause`.
 
 ## Good to know
 
@@ -89,7 +98,8 @@ Async sends also throw `OperationFailedError` / `OperationTimeoutError`.
   const mock = new MockTransport().respondJson("getblockcount", "42");
   new VerusClient({ transport: mock }); // .chain.getBlockCount() → 42
   ```
-- **Resilience (opt-in)** — `resilience: { timeoutMs, breaker: { failuresBeforeOpen } }`; daemon-level errors never trip the breaker.
+- **Resilience (opt-in)** — `resilience: { timeoutMs, breaker: { failuresBeforeOpen } }`; a policy timeout aborts the in-flight HTTP request (no orphaned sends). Daemon-level errors, auth failures, and caller aborts never trip the breaker.
+- **Cancellation** — `call(method, params, { signal })` aborts the in-flight request (`TransportError`, reason `"aborted"`).
 - Node ≥ 22, no `Buffer`/`fs` in the client path. Typed against daemon **v1.2.17**; unknown fields from newer daemons pass through untouched.
 - Deliberately transport + types only — no client-side signing or tx construction (that's [`@chainvue/verus-sdk`](https://www.npmjs.com/package/@chainvue/verus-sdk) / `verusid-ts-client`).
 - More depth per area in [`docs/`](./docs); runnable scripts in [`examples/`](./examples).
