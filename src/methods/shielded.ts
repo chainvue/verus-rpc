@@ -1,9 +1,8 @@
 import { amountParam } from "../amount.js";
-import { OperationFailedError } from "../errors.js";
 import { LosslessNumber } from "../lossless.js";
 import { expectArray, mapString, mapStringArray } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
-import { pollOperation } from "./operations.js";
+import { pollOperation, requireTxid } from "./operations.js";
 import { requestT2 } from "./t2.js";
 import { mapOperationStatus, type OperationStatus } from "./wallet.js";
 
@@ -194,7 +193,11 @@ export class ShieldedApi {
     );
   }
 
-  /** `zSendMany` + wait for the final state. Resolves with the txid. */
+  /**
+   * `zSendMany` + wait for the final state. Resolves with the txid. A
+   * "success" status missing `result.txid` throws `ResponseMappingError` —
+   * the send completed, only the response shape drifted; never retry it.
+   */
   async zSendManyAndWait(
     options: ZSendManyOptions & { pollIntervalMs?: number; waitTimeoutMs?: number },
   ): Promise<{ opid: string; txid: string }> {
@@ -205,11 +208,7 @@ export class ShieldedApi {
       ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {}),
       ...(waitTimeoutMs !== undefined ? { waitTimeoutMs } : {}),
     });
-    const txid = status.result?.txid;
-    if (typeof txid !== "string") {
-      throw new OperationFailedError(opid, status.status, undefined, "success without txid");
-    }
-    return { opid, txid };
+    return { opid, txid: requireTxid(status) };
   }
 
   /** Detailed shielded view of a transaction. T2. */

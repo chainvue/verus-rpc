@@ -1,5 +1,4 @@
 import { amountParam } from "../amount.js";
-import { ResponseMappingError } from "../errors.js";
 import { toSafeNumbers } from "../lossless.js";
 import {
   expectArray,
@@ -15,7 +14,7 @@ import {
   withPassthrough,
 } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
-import { pollOperation } from "./operations.js";
+import { pollOperation, requireTxid } from "./operations.js";
 import { requestT2 } from "./t2.js";
 import type {
   GetWalletInfoResult,
@@ -387,7 +386,9 @@ export class WalletApi {
   /**
    * `sendcurrency` + poll `z_getoperationstatus` until the operation reaches
    * a final state. Resolves with the txid on success; throws
-   * `OperationFailedError` / `OperationTimeoutError` otherwise.
+   * `OperationFailedError` / `OperationTimeoutError` otherwise. A "success"
+   * status missing `result.txid` throws `ResponseMappingError` — the send
+   * completed, only the response shape drifted; never retry it.
    */
   async sendCurrencyAndWait(options: SendCurrencyAndWaitOptions): Promise<SendCurrencyAndWaitResult> {
     const { pollIntervalMs, waitTimeoutMs, ...sendOptions } = options;
@@ -397,11 +398,7 @@ export class WalletApi {
       opid,
       { intervalMs: pollIntervalMs ?? 1_000, timeoutMs: waitTimeoutMs ?? 120_000 },
     );
-    const txid = status.result?.txid;
-    if (typeof txid !== "string") {
-      throw new ResponseMappingError("z_getoperationstatus", "result.txid", "success without txid");
-    }
-    return { opid, txid };
+    return { opid, txid: requireTxid(status) };
   }
 
   // -------------------------------------------------------------------------

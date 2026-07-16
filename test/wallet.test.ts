@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OperationFailedError, OperationTimeoutError, TransportError, VerusRpcError } from "../src/errors.js";
+import { OperationFailedError, OperationTimeoutError, ResponseMappingError, TransportError, VerusRpcError } from "../src/errors.js";
 import { isLosslessNumber } from "../src/lossless.js";
 import { WalletApi } from "../src/methods/wallet.js";
 import { MockTransport } from "../src/mock.js";
@@ -153,6 +153,19 @@ describe("sendCurrencyAndWait", () => {
     expect((err as OperationFailedError).opid).toBe("opid-1");
     expect((err as OperationFailedError).code).toBe(-6);
     expect((err as OperationFailedError).message).toContain("Insufficient funds");
+  });
+
+  it("throws ResponseMappingError on success without a txid (shape drift — the send completed, never retry-shaped)", async () => {
+    const { mock, wallet } = setup();
+    mock.respond("sendcurrency", "opid-1");
+    mock.respondJson("z_getoperationstatus", '[{"id":"opid-1","status":"success","result":{}}]');
+
+    const err = await wallet.sendCurrencyAndWait(sendOptions).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ResponseMappingError);
+    expect(err).not.toBeInstanceOf(OperationFailedError);
+    expect((err as ResponseMappingError).method).toBe("z_getoperationstatus");
+    expect((err as ResponseMappingError).field).toBe("result.txid");
+    expect((err as ResponseMappingError).message).toContain("opid-1");
   });
 
   it("throws OperationTimeoutError when the deadline passes", async () => {

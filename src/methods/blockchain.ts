@@ -217,6 +217,9 @@ export class BlockchainApi {
   async estimateFee(options: { blocks: number }): Promise<string | null> {
     const result = await requestT2<unknown>(this.transport, "estimatefee", [options.blocks]);
     const text = typeof result === "string" ? result : String(result);
+    // The daemon signals "insufficient data" with a literal -1, but its exact
+    // wire form ("-1" vs "-1.00000000") is a formatting detail; a real
+    // fee-per-kB is never negative, so any negative result is the sentinel.
     return text.startsWith("-") ? null : text;
   }
 

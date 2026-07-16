@@ -1,6 +1,6 @@
 /** Etappe 5 — shielded (z_*), addressindex, blockchain/rawtx/util reads. */
 import { describe, expect, it } from "vitest";
-import { OperationFailedError } from "../src/errors.js";
+import { OperationFailedError, ResponseMappingError } from "../src/errors.js";
 import { isLosslessNumber, stringifyLossless } from "../src/lossless.js";
 import { AddressIndexApi } from "../src/methods/addressindex.js";
 import { BlockchainApi } from "../src/methods/blockchain.js";
@@ -54,6 +54,19 @@ describe("ShieldedApi", () => {
         pollIntervalMs: 1,
       }),
     ).resolves.toEqual({ opid: "opid-z1", txid: "ztx" });
+  });
+
+  it("zSendManyAndWait throws ResponseMappingError on success without a txid (shape drift, same contract as sendCurrencyAndWait)", async () => {
+    const mock = new MockTransport().respond("z_sendmany", "opid-z1");
+    mock.respondJson("z_getoperationstatus", '[{"id":"opid-z1","status":"success","result":{}}]');
+    const shielded = new ShieldedApi(mock);
+    const err = await shielded
+      .zSendManyAndWait({ fromAddress: "zs1from", amounts: [{ address: "zs1to", amount: 1n }], pollIntervalMs: 1 })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ResponseMappingError);
+    expect(err).not.toBeInstanceOf(OperationFailedError);
+    expect((err as ResponseMappingError).field).toBe("result.txid");
+    expect((err as ResponseMappingError).message).toContain("opid-z1");
   });
 
   it("zMergeToAddress gap-fills skipped slots with the daemon's own defaults", async () => {
