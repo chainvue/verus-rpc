@@ -1,3 +1,4 @@
+import { linkedAbort } from "./abort.js";
 import { TransportError, VerusRpcError } from "./errors.js";
 import { isLosslessNumber, parseLossless, stringifyLossless } from "./lossless.js";
 
@@ -95,11 +96,12 @@ export class DaemonTransport implements RpcTransport {
     if (isAborted(signal)) {
       throw new TransportError("aborted", `${method}: request aborted before send`);
     }
-    const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
-    const effectiveSignal = signal === undefined ? timeoutSignal : AbortSignal.any([timeoutSignal, signal]);
+    const { signal: effectiveSignal, unlink } = linkedAbort([signal], this.timeoutMs);
 
     // Body read stays inside the try: an abort or connection drop while the
     // body streams must classify as TransportError like any other failure.
+    // The timer and caller-signal listener must not outlive the request —
+    // teardown runs in `finally`.
     let status: number;
     let ok: boolean;
     let text: string;
@@ -131,6 +133,8 @@ export class DaemonTransport implements RpcTransport {
       throw new TransportError("network", `${method}: ${err instanceof Error ? err.message : String(err)}`, {
         cause: err,
       });
+    } finally {
+      unlink();
     }
 
     // 401/403 is a credentials problem, whatever the body looks like — even

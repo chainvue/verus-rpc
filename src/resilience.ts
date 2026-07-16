@@ -8,6 +8,7 @@ import {
   timeout,
   wrap,
 } from "cockatiel";
+import { linkedAbort } from "./abort.js";
 import { TransportError } from "./errors.js";
 import type { RpcTransport } from "./transport.js";
 
@@ -61,14 +62,17 @@ export function withResilience(transport: RpcTransport, config: ResilienceConfig
         // signal is combined HERE rather than handed to cockatiel: that way a
         // deliberate caller abort surfaces from the transport as reason
         // "aborted", which isTransportFailure exempts — only real node
-        // trouble (policy timeouts included) moves the breaker.
-        return await policy.execute(({ signal: policySignal }) =>
-          transport.request(
-            method,
-            params,
-            signal === undefined ? policySignal : AbortSignal.any([policySignal, signal]),
-          ),
-        );
+        // trouble (policy timeouts included) moves the breaker. linkedAbort
+        // (not AbortSignal.any) so the per-call composite detaches from a
+        // long-lived caller signal once the request settles.
+        return await policy.execute(async ({ signal: policySignal }) => {
+          const { signal: combined, unlink } = linkedAbort([policySignal, signal]);
+          try {
+            return await transport.request(method, params, combined);
+          } finally {
+            unlink();
+          }
+        });
       } catch (err) {
         if (err instanceof BrokenCircuitError) {
           throw new TransportError("circuit-open", `${method}: circuit breaker is open`);

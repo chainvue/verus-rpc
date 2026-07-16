@@ -1,3 +1,4 @@
+import { getEventListeners } from "node:events";
 import { describe, expect, it } from "vitest";
 import { TransportError, VerusRpcError } from "../src/errors.js";
 import { MockTransport } from "../src/mock.js";
@@ -100,5 +101,41 @@ describe("withResilience", () => {
     expect(err).toBeInstanceOf(TransportError);
     expect((err as TransportError).reason).toBe("timeout");
     expect(sawAbort).toBe(true);
+  });
+
+  it("aborts the in-flight request on policy timeout when a caller signal is attached, and detaches from it", async () => {
+    // Guards the combined-signal path: dropping policySignal from the
+    // composite would leave the request running against the daemon after a
+    // policy timeout whenever a caller signal is supplied (orphaned send).
+    let sawAbort = false;
+    const hanging = {
+      request: (_method: string, _params: unknown[], signal?: AbortSignal) =>
+        new Promise<unknown>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            sawAbort = true;
+            reject(new TransportError("timeout", "aborted"));
+          });
+        }),
+    };
+    const transport = withResilience(hanging, { timeoutMs: 20 });
+    const caller = new AbortController();
+
+    const err = await transport.request("sendcurrency", [], caller.signal).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("timeout");
+    expect(sawAbort).toBe(true);
+    expect(getEventListeners(caller.signal, "abort")).toHaveLength(0);
+  });
+
+  it("leaves no listeners on a long-lived caller signal once requests settle", async () => {
+    const mock = new MockTransport();
+    for (let i = 0; i < 5; i++) mock.respond("getinfo", "ok");
+    const transport = withResilience(mock, {});
+    const longLived = new AbortController();
+
+    for (let i = 0; i < 5; i++) {
+      await transport.request("getinfo", [], longLived.signal);
+    }
+    expect(getEventListeners(longLived.signal, "abort")).toHaveLength(0);
   });
 });
