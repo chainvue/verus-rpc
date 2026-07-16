@@ -1,5 +1,5 @@
 import { formatAmount } from "../amount.js";
-import { OperationFailedError, OperationTimeoutError, ResponseMappingError } from "../errors.js";
+import { OperationFailedError, OperationTimeoutError, ResponseMappingError, TransportError } from "../errors.js";
 import { LosslessNumber, toSafeNumbers } from "../lossless.js";
 import {
   expectArray,
@@ -398,10 +398,21 @@ export class WalletApi {
     const timeout = waitTimeoutMs ?? 120_000;
     const opid = await this.sendCurrency(sendOptions);
     const deadline = Date.now() + timeout;
+    let lastPollError: TransportError | undefined;
 
     for (;;) {
-      const statuses = await this.getOperationStatus({ operationIds: [opid] });
-      const status = statuses.find((s) => s.id === opid);
+      let statuses: OperationStatus[] | undefined;
+      try {
+        statuses = await this.getOperationStatus({ operationIds: [opid] });
+        lastPollError = undefined;
+      } catch (err) {
+        // The send is already in flight — a transient transport failure while
+        // polling must not abandon the opid. But bad credentials and caller
+        // aborts cannot recover by re-polling: fail those immediately.
+        if (!(err instanceof TransportError) || err.reason === "auth" || err.reason === "aborted") throw err;
+        lastPollError = err;
+      }
+      const status = statuses?.find((s) => s.id === opid);
       if (status !== undefined) {
         if (status.status === "success") {
           const txid = status.result?.txid;
@@ -421,7 +432,7 @@ export class WalletApi {
       }
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
-        throw new OperationTimeoutError(opid, timeout);
+        throw new OperationTimeoutError(opid, timeout, lastPollError);
       }
       await sleep(Math.min(interval, remaining));
     }

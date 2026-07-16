@@ -1,7 +1,7 @@
 /** Etappe 5 — shielded (z_*), addressindex, blockchain/rawtx/util reads. */
 import { describe, expect, it } from "vitest";
 import { OperationFailedError } from "../src/errors.js";
-import { isLosslessNumber } from "../src/lossless.js";
+import { isLosslessNumber, stringifyLossless } from "../src/lossless.js";
 import { AddressIndexApi } from "../src/methods/addressindex.js";
 import { BlockchainApi } from "../src/methods/blockchain.js";
 import { ShieldedApi } from "../src/methods/shielded.js";
@@ -56,6 +56,14 @@ describe("ShieldedApi", () => {
     ).resolves.toEqual({ opid: "opid-z1", txid: "ztx" });
   });
 
+  it("zMergeToAddress gap-fills skipped slots with the daemon's own defaults", async () => {
+    const mock = new MockTransport().respondJson("z_mergetoaddress", '{"opid":"opid-m1"}');
+    const shielded = new ShieldedApi(mock);
+    await shielded.zMergeToAddress({ fromAddresses: ["ANY_SAPLING"], toAddress: "zs1to", memo: "f5" });
+    // fee 0.0001, transparent_limit 50, shielded_limit 200 (sapling default).
+    expect(stringifyLossless(mock.calls[0]!.params)).toBe('[["ANY_SAPLING"],"zs1to",0.0001,50,200,"f5"]');
+  });
+
   it("waitForOperation surfaces daemon failure details", async () => {
     const mock = new MockTransport().respondJson(
       "z_getoperationstatus",
@@ -65,6 +73,18 @@ describe("ShieldedApi", () => {
     const err = await shielded.waitForOperation({ opid: "opid-z1" }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(OperationFailedError);
     expect((err as OperationFailedError).code).toBe(-6);
+  });
+
+  it("waitForOperation keeps polling through transient transport failures", async () => {
+    const mock = new MockTransport()
+      .failTransport("z_getoperationstatus", "network")
+      .respondJson("z_getoperationstatus", '[{"id":"opid-z1","status":"success","result":{"txid":"ztx"}}]');
+    const shielded = new ShieldedApi(mock);
+    await expect(shielded.waitForOperation({ opid: "opid-z1", pollIntervalMs: 1 })).resolves.toMatchObject({
+      id: "opid-z1",
+      status: "success",
+    });
+    expect(mock.calls).toHaveLength(2);
   });
 });
 
@@ -112,6 +132,20 @@ describe("BlockchainApi", () => {
     const result = await blockchain.getVdxfId({ name: "vrsc::x" });
     expect(result.hash160result).toBe("dcb1");
     expect(result.qualifiedname.name).toBe("vrsc::x");
+    expect(mock.calls[0]!.params).toEqual(["vrsc::x"]);
+  });
+
+  it("getVdxfId sends qualifiers under the daemon's exact keys", async () => {
+    const mock = new MockTransport().respondJson(
+      "getvdxfid",
+      '{"vdxfid":"iAbc...","hash160result":"dcb2","qualifiedname":{"name":"vrsc::x"}}',
+    );
+    const blockchain = new BlockchainApi(mock);
+    await blockchain.getVdxfId({ name: "vrsc::x", vdxfKey: "iKey...", uint256: "ab".repeat(32), indexNum: 3 });
+    expect(mock.calls[0]!.params).toEqual([
+      "vrsc::x",
+      { vdxfkey: "iKey...", uint256: "ab".repeat(32), indexnum: 3 },
+    ]);
   });
 
   it("getBlock passes heights as strings (daemon requirement)", async () => {
@@ -127,10 +161,33 @@ describe("BlockchainApi", () => {
     await expect(
       blockchain.createRawTransaction({
         inputs: [{ txid: "ab", vout: 0 }],
-        outputs: [{ RAddr: "0.1" }],
+        outputs: { RAddr: 10_000_000n },
       }),
     ).resolves.toBe("rawhex");
     await expect(blockchain.sendRawTransaction({ hex: "rawhex" })).resolves.toBe("txid1");
+  });
+
+  it("createRawTransaction serializes bigint sats as 8-decimal coins in ONE outputs object", async () => {
+    const mock = new MockTransport().respond("createrawtransaction", "rawhex");
+    const blockchain = new BlockchainApi(mock);
+    await blockchain.createRawTransaction({
+      inputs: [{ txid: "ab", vout: 0, sequence: 1 }],
+      // 0.1 coin as bigint sats, plus an opaque non-bigint passthrough value.
+      outputs: { RAddr: 10_000_000n, RAddr2: { currency: 5n } },
+      expiryHeight: 100,
+    });
+    // Assert the exact wire bytes: outputs is a single object (daemon's
+    // positional shape, NOT an array) and bigint sats become coin decimals.
+    expect(stringifyLossless(mock.calls[0]!.params)).toBe(
+      '[[{"txid":"ab","vout":0,"sequence":1}],{"RAddr":0.10000000,"RAddr2":{"currency":0.00000005}},0,100]',
+    );
+  });
+
+  it("estimateFee returns null for the daemon's -1 no-estimate sentinel", async () => {
+    const mock = new MockTransport().respondJson("estimatefee", "-1").respondJson("estimatefee", "0.00010000");
+    const blockchain = new BlockchainApi(mock);
+    await expect(blockchain.estimateFee({ blocks: 2 })).resolves.toBeNull();
+    await expect(blockchain.estimateFee({ blocks: 2 })).resolves.toBe("0.00010000");
   });
 
   it("getTxOut returns null for spent/unknown outputs", async () => {

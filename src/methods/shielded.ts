@@ -1,5 +1,5 @@
 import { formatAmount } from "../amount.js";
-import { OperationFailedError, OperationTimeoutError } from "../errors.js";
+import { OperationFailedError, OperationTimeoutError, TransportError } from "../errors.js";
 import { LosslessNumber } from "../lossless.js";
 import { expectArray, mapString, mapStringArray } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
@@ -34,8 +34,12 @@ export interface ZReceivedEntry {
   txid: string;
   /** Exact decimal string. */
   amount: string;
-  /** Raw sats where the daemon provides them. */
-  amountZat?: number | undefined;
+  /**
+   * Raw sats where the daemon provides them. `number` up to 2^53−1;
+   * beyond that (PBaaS chains with supply > ~90M coins) the safe-number
+   * conversion surfaces the exact value as a decimal string instead.
+   */
+  amountZat?: number | string | undefined;
   memo?: string | undefined;
   confirmations?: number | undefined;
   change?: boolean | undefined;
@@ -178,12 +182,23 @@ export class ShieldedApi {
     const interval = options.pollIntervalMs ?? 1_000;
     const timeout = options.waitTimeoutMs ?? 120_000;
     const deadline = Date.now() + timeout;
+    let lastPollError: TransportError | undefined;
     for (;;) {
-      const raw = expectArray(
-        await this.transport.request("z_getoperationstatus", [[options.opid]]),
-        "z_getoperationstatus",
-      );
-      const status = raw.map((item, i) => mapOperationStatus(item, i)).find((s) => s.id === options.opid);
+      let status: OperationStatus | undefined;
+      try {
+        const raw = expectArray(
+          await this.transport.request("z_getoperationstatus", [[options.opid]]),
+          "z_getoperationstatus",
+        );
+        status = raw.map((item, i) => mapOperationStatus(item, i)).find((s) => s.id === options.opid);
+        lastPollError = undefined;
+      } catch (err) {
+        // The operation is already in flight — a transient transport failure
+        // while polling must not abandon the opid. But bad credentials and
+        // caller aborts cannot recover by re-polling: fail those immediately.
+        if (!(err instanceof TransportError) || err.reason === "auth" || err.reason === "aborted") throw err;
+        lastPollError = err;
+      }
       if (status !== undefined) {
         if (status.status === "success") return status;
         if (status.status === "failed" || status.status === "cancelled") {
@@ -196,7 +211,9 @@ export class ShieldedApi {
         }
       }
       const remaining = deadline - Date.now();
-      if (remaining <= 0) throw new OperationTimeoutError(options.opid, timeout);
+      if (remaining <= 0) {
+        throw new OperationTimeoutError(options.opid, timeout, lastPollError);
+      }
       await sleep(Math.min(interval, remaining));
     }
   }
@@ -240,10 +257,13 @@ export class ShieldedApi {
       options.shieldedLimit,
       options.memo,
     ];
+    // Gap-fill skipped middle slots with the daemon's own defaults: fee
+    // 0.0001, transparent limit 50, shielded limit 200 (the sapling default —
+    // sprout notes default to 20 on a bare daemon call; set `shieldedLimit`
+    // explicitly if you merge sprout notes).
+    const defaults: unknown[] = [new LosslessNumber("0.0001"), 50, 200, ""];
     const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
-    for (let i = 0; i <= lastSet; i++) {
-      params.push(opts[i] ?? (i === 0 ? new LosslessNumber("0.0001") : i === 3 ? "" : 50));
-    }
+    for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? defaults[i]);
     return requestT2(this.transport, "z_mergetoaddress", params);
   }
 

@@ -226,10 +226,17 @@ describe("T2 signatures & trust", () => {
     expect(mock.calls[0]!.params).toEqual([{ address: "x@", message: "hi" }]);
   });
 
-  it("getIdentityTrust wraps identity ids", async () => {
+  it("getIdentityTrust always sends the daemon's mandatory bare id-array param", async () => {
     const { mock, identity } = setup();
     mock.respondJson("getidentitytrust", '{"setratings":{},"mode":0}');
     await identity.getIdentityTrust({ identityIds: ["iAddr"] });
-    expect(mock.calls[0]!.params).toEqual([{ identities: ["iAddr"] }]);
+    // Daemon signature: getidentitytrust '["id",...]' — exactly one param,
+    // a BARE array ({identities:[...]} would error or be ignored).
+    expect(mock.calls[0]!.params).toEqual([["iAddr"]]);
+
+    mock.respondJson("getidentitytrust", '{"setratings":{},"mode":0}');
+    await identity.getIdentityTrust();
+    // No filter still sends [] — zero params is rejected by the daemon.
+    expect(mock.calls[1]!.params).toEqual([[]]);
   });
 });

@@ -8,6 +8,10 @@
     "type": "git",
     "url": "git+https://github.com/chainvue/verus-rpc.git"
   },
+  "homepage": "https://github.com/chainvue/verus-rpc#readme",
+  "bugs": {
+    "url": "https://github.com/chainvue/verus-rpc/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,10 +19,12 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
+    "src",
     "NOTICE"
   ],
   "publishConfig": {

@@ -53,6 +53,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      # Set by the exec plugin's successCmd on a real publish; empty on no-op.
+      version: ${{ steps.semrel.outputs.version }}
     permissions:
       contents: write # semantic-release pushes the release commit + tag
       id-token: write # OIDC token for npm trusted publishing (provenance)
@@ -87,6 +90,7 @@ jobs:
         run: pnpm test
 
       - name: Release
+        id: semrel
         run: >-
           pnpm exec semantic-release
           ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
@@ -111,12 +115,20 @@ jobs:
           # not try to invoke pnpm (from the checked-out packageManager field).
           package-manager-cache: false
 
-      # Validate whatever is CURRENTLY latest on the registry — if this run
-      # published, that's the new version; if it was a no-op, it re-checks the
-      # existing latest (cheap, harmless).
-      - name: Resolve latest published version
+      # Validate the version this run actually published (exec successCmd
+      # exports it) — falling back to `npm view` only lets registry lag
+      # green-light the PREVIOUS version, so the fallback is used solely for
+      # no-op runs, where re-checking the existing latest is cheap + harmless.
+      - name: Resolve version to validate
         id: v
-        run: echo "version=$(npm view @chainvue/verus-rpc version)" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASED: ${{ needs.release.outputs.version }}
+        run: |
+          if [ -n "$RELEASED" ]; then
+            echo "version=$RELEASED" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(npm view @chainvue/verus-rpc version)" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Wait for registry
         run: |

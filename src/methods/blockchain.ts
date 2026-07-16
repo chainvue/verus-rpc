@@ -1,4 +1,5 @@
-import { toSafeNumbers } from "../lossless.js";
+import { formatAmount } from "../amount.js";
+import { isLosslessNumber, LosslessNumber } from "../lossless.js";
 import { expectObject, mapInt, mapString, mapStringOptional, withPassthrough } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
 import { requestT2 } from "./t2.js";
@@ -24,11 +25,31 @@ export interface CreateRawTransactionInput {
 }
 
 export interface RawTransactionOptions {
-  /** Address → amount (bigint sats) or currency-object output. */
-  outputs: Record<string, unknown>[];
+  /**
+   * ONE object mapping address → amount (the daemon's positional shape —
+   * not an array). `bigint` values are sats and serialize as the daemon's
+   * 8-decimal coin notation; everything else passes through opaquely.
+   */
+  outputs: Record<string, unknown>;
   inputs?: CreateRawTransactionInput[];
   locktime?: number;
   expiryHeight?: number;
+}
+
+/**
+ * Deep-convert `bigint` sats anywhere in a caller-provided outputs tree to
+ * exact 8-decimal coin notation — the daemon reads createrawtransaction
+ * amounts in coins, so a bare bigint would be off by 1e8.
+ */
+function serializeOutputAmounts(tree: unknown): unknown {
+  if (typeof tree === "bigint") return new LosslessNumber(formatAmount(tree));
+  if (Array.isArray(tree)) return tree.map(serializeOutputAmounts);
+  if (tree !== null && typeof tree === "object" && !isLosslessNumber(tree)) {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(tree)) out[key] = serializeOutputAmounts(value);
+    return out;
+  }
+  return tree;
 }
 
 export function mapGetVdxfId(raw: unknown): GetVdxfIdResult {
@@ -52,10 +73,26 @@ export class BlockchainApi {
   // -------------------------------------------------------------------------
   // T1 curated
 
-  /** VDXF key id for a namespaced name. */
-  async getVdxfId(options: { name: string; parent?: string }): Promise<GetVdxfIdResult> {
+  /**
+   * VDXF key id for a namespaced name. The optional qualifiers match the
+   * daemon's second param exactly (`vdxfkey` / `uint256` / `indexnum`) —
+   * unknown keys would be silently ignored and yield the wrong id.
+   */
+  async getVdxfId(options: {
+    name: string;
+    /** VDXF key or i-address to combine via hash. */
+    vdxfKey?: string;
+    /** 32-byte hex hash to combine. */
+    uint256?: string;
+    /** int32 index number to combine. */
+    indexNum?: number;
+  }): Promise<GetVdxfIdResult> {
     const params: unknown[] = [options.name];
-    if (options.parent !== undefined) params.push({ parent: options.parent });
+    const qualifiers: Record<string, unknown> = {};
+    if (options.vdxfKey !== undefined) qualifiers["vdxfkey"] = options.vdxfKey;
+    if (options.uint256 !== undefined) qualifiers["uint256"] = options.uint256;
+    if (options.indexNum !== undefined) qualifiers["indexnum"] = options.indexNum;
+    if (Object.keys(qualifiers).length > 0) params.push(qualifiers);
     return mapGetVdxfId(await this.transport.request("getvdxfid", params));
   }
 
@@ -125,8 +162,9 @@ export class BlockchainApi {
   }
 
   /**
-   * Build an unsigned raw transaction. Amount outputs accept bigint sats and
-   * are serialized losslessly. T2. Chain: createRawTransaction →
+   * Build an unsigned raw transaction. `outputs` is one address → amount
+   * object; bigint amounts are sats, serialized losslessly as 8-decimal
+   * coins. Returns the tx hex. Chain: createRawTransaction →
    * (fund)/signRawTransaction → sendRawTransaction.
    */
   async createRawTransaction(options: RawTransactionOptions): Promise<string> {
@@ -135,11 +173,13 @@ export class BlockchainApi {
       if (input.sequence !== undefined) raw["sequence"] = input.sequence;
       return raw;
     });
-    const outputs = toSafeNumbers(options.outputs); // caller-provided; kept opaque
-    const params: unknown[] = [inputs, outputs];
+    const params: unknown[] = [inputs, serializeOutputAmounts(options.outputs)];
     if (options.locktime !== undefined || options.expiryHeight !== undefined) params.push(options.locktime ?? 0);
     if (options.expiryHeight !== undefined) params.push(options.expiryHeight);
-    return requestT2(this.transport, "createrawtransaction", params);
+    return mapString(await this.transport.request("createrawtransaction", params), {
+      method: "createrawtransaction",
+      field: "(result)",
+    });
   }
 
   /** Sign a raw transaction with wallet keys. T2 — `{hex, complete}`. */
@@ -175,10 +215,14 @@ export class BlockchainApi {
     return requestT2(this.transport, "validateaddress", [options.address]);
   }
 
-  /** Fee estimate (VRSC/kB) for a confirmation target. T2 — decimal string. */
-  async estimateFee(options: { blocks: number }): Promise<string> {
+  /**
+   * Fee estimate (VRSC/kB) for a confirmation target. T2 — decimal string,
+   * or `null` when the daemon has insufficient data (its `-1` sentinel).
+   */
+  async estimateFee(options: { blocks: number }): Promise<string | null> {
     const result = await requestT2<unknown>(this.transport, "estimatefee", [options.blocks]);
-    return typeof result === "string" ? result : String(result);
+    const text = typeof result === "string" ? result : String(result);
+    return text.startsWith("-") ? null : text;
   }
 
   // -------------------------------------------------------------------------

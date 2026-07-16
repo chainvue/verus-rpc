@@ -28,9 +28,17 @@ export interface VerusClientConfig {
   fetchImpl?: typeof fetch;
   /** Plain per-request timeout (ms) of the default transport. Default 60s. */
   timeoutMs?: number;
-  /** Opt-in circuit breaker + policy timeout. Off by default. */
+  /**
+   * Opt-in circuit breaker + policy timeout. Off by default. Also applies
+   * when combined with a custom `transport` (the transport gets wrapped).
+   */
   resilience?: ResilienceConfig;
-  /** Full transport override (tests, future GatewayTransport). */
+  /**
+   * Full transport override (tests, future GatewayTransport). Mutually
+   * exclusive with the default-transport options (`url`, `user`, `pass`,
+   * `fetchImpl`, `timeoutMs`) — combining them throws instead of silently
+   * ignoring what you passed.
+   */
   transport?: RpcTransport;
 }
 
@@ -47,6 +55,11 @@ export type CallNumbersMode = "lossless" | "js";
 
 export interface CallOptions {
   numbers?: CallNumbersMode;
+  /**
+   * Aborts the in-flight HTTP request. Surfaces as `TransportError` with
+   * reason `"aborted"` — a deliberate cancel, never counted by the breaker.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -68,8 +81,20 @@ export class VerusClient {
   private readonly transport: RpcTransport;
 
   constructor(config: VerusClientConfig) {
+    let base: RpcTransport;
     if (config.transport !== undefined) {
-      this.transport = config.transport;
+      if (
+        config.url !== undefined ||
+        config.user !== undefined ||
+        config.pass !== undefined ||
+        config.fetchImpl !== undefined ||
+        config.timeoutMs !== undefined
+      ) {
+        throw new TypeError(
+          "VerusClient: url/user/pass/fetchImpl/timeoutMs configure the default transport and are ignored when a transport is injected — pass one or the other",
+        );
+      }
+      base = config.transport;
     } else {
       if (config.url === undefined) {
         throw new TypeError("VerusClient: url is required (or pass a transport)");
@@ -77,15 +102,15 @@ export class VerusClient {
       if ((config.user === undefined) !== (config.pass === undefined)) {
         throw new TypeError("VerusClient: user and pass must be provided together (omit both for public nodes)");
       }
-      const daemon = new DaemonTransport({
+      base = new DaemonTransport({
         url: config.url,
         ...(config.user !== undefined ? { user: config.user } : {}),
         ...(config.pass !== undefined ? { pass: config.pass } : {}),
         ...(config.fetchImpl !== undefined ? { fetchImpl: config.fetchImpl } : {}),
         ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
       });
-      this.transport = config.resilience !== undefined ? withResilience(daemon, config.resilience) : daemon;
     }
+    this.transport = config.resilience !== undefined ? withResilience(base, config.resilience) : base;
     this.chain = new ChainApi(this.transport);
     this.wallet = new WalletApi(this.transport);
     this.identity = new IdentityApi(this.transport);
@@ -100,7 +125,7 @@ export class VerusClient {
    * Untyped by design — see `CallNumbersMode` for how numbers arrive.
    */
   async call(method: string, params: unknown[] = [], options?: CallOptions): Promise<unknown> {
-    const raw = await this.transport.request(method, params);
+    const raw = await this.transport.request(method, params, options?.signal);
     return options?.numbers === "js" ? toJsNumbers(raw) : toSafeNumbers(raw);
   }
 }

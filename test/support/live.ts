@@ -51,8 +51,8 @@ export class CapturingTransport implements RpcTransport {
 
   constructor(private readonly inner: RpcTransport) {}
 
-  async request(method: string, params: unknown[]): Promise<unknown> {
-    const raw = await this.inner.request(method, params);
+  async request(method: string, params: unknown[], signal?: AbortSignal): Promise<unknown> {
+    const raw = await this.inner.request(method, params, signal);
     this.captures.push({ method, params, raw });
     return raw;
   }
