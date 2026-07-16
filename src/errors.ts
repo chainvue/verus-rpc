@@ -8,12 +8,13 @@
  * - `TransportError` — the node could not be reached, did not answer in time,
  *   answered with an unparseable body, or the breaker is open.
  *
- * `TransportError` reason `"auth"` (HTTP 401/403 — bad or missing
- * rpcuser/rpcpassword) is a client configuration problem, not node health:
- * it never counts toward the circuit breaker.
+ * Two `TransportError` reasons are client-side conditions, not node health,
+ * and never count toward the circuit breaker: `"auth"` (HTTP 401/403 — bad
+ * or missing rpcuser/rpcpassword) and `"aborted"` (the caller's AbortSignal
+ * cancelled the request deliberately).
  */
 
-export type TransportFailureReason = "network" | "timeout" | "auth" | "bad-response" | "circuit-open";
+export type TransportFailureReason = "network" | "timeout" | "auth" | "aborted" | "bad-response" | "circuit-open";
 
 export class TransportError extends Error {
   readonly reason: TransportFailureReason;
@@ -123,8 +124,10 @@ export class OperationTimeoutError extends Error {
   readonly opid: string;
   readonly timeoutMs: number;
 
-  constructor(opid: string, timeoutMs: number, options?: { cause?: unknown }) {
-    super(`operation ${opid} still pending after ${timeoutMs}ms`, options);
+  constructor(opid: string, timeoutMs: number, cause?: unknown) {
+    // Only attach a cause when one exists — an unconditional { cause } would
+    // define an own `cause: undefined` property, changing `"cause" in err`.
+    super(`operation ${opid} still pending after ${timeoutMs}ms`, cause === undefined ? undefined : { cause });
     this.name = "OperationTimeoutError";
     this.opid = opid;
     this.timeoutMs = timeoutMs;

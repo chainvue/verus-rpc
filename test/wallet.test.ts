@@ -178,6 +178,18 @@ describe("sendCurrencyAndWait", () => {
     expect(mock.calls.filter((c) => c.method === "z_getoperationstatus")).toHaveLength(2);
   });
 
+  it("fails fast when polling hits an auth failure (bad credentials cannot recover)", async () => {
+    const { mock, wallet } = setup();
+    mock.respond("sendcurrency", "opid-1");
+    mock.failTransport("z_getoperationstatus", "auth", "HTTP 401");
+
+    const err = await wallet.sendCurrencyAndWait(sendOptions).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("auth");
+    // One poll, no 120s deadline wait.
+    expect(mock.calls.filter((c) => c.method === "z_getoperationstatus")).toHaveLength(1);
+  });
+
   it("attaches the last poll failure as cause when the deadline passes without an answer", async () => {
     const { mock, wallet } = setup();
     mock.respond("sendcurrency", "opid-1");

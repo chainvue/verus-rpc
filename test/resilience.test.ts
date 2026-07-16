@@ -54,6 +54,35 @@ describe("withResilience", () => {
     expect((err as TransportError).reason).toBe("timeout");
   });
 
+  it("caller aborts never count toward the breaker (deliberate cancel ≠ node trouble)", async () => {
+    // Inner transport mimics DaemonTransport: rejects reason "aborted" when
+    // the signal fires, otherwise answers successfully.
+    let answered = 0;
+    const inner = {
+      request: (_m: string, _p: unknown[], signal?: AbortSignal) =>
+        new Promise<unknown>((resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new TransportError("aborted", "caller cancelled")));
+          if (signal === undefined || !signal.aborted) setTimeout(() => resolve(`ok-${++answered}`), 30);
+        }),
+    };
+    const transport = withResilience(inner, { timeoutMs: 60_000, breaker: { failuresBeforeOpen: 1 } });
+
+    // Abort several requests in a row — with failuresBeforeOpen=1, a single
+    // counted failure would open the circuit.
+    for (let i = 0; i < 3; i++) {
+      const controller = new AbortController();
+      const pending = transport.request("getinfo", [], controller.signal).catch((e: unknown) => e);
+      controller.abort();
+      const err = await pending;
+      expect(err).toBeInstanceOf(TransportError);
+      expect((err as TransportError).reason).toBe("aborted");
+    }
+    // Circuit still closed: the next request reaches the node and succeeds
+    // (with failuresBeforeOpen=1, a single counted failure would have opened
+    // it and this would reject with "circuit-open" instead).
+    await expect(transport.request("getinfo", [])).resolves.toMatch(/^ok-/);
+  });
+
   it("aborts the in-flight request when the policy timeout fires (no orphaned send)", async () => {
     let sawAbort = false;
     const hanging = {

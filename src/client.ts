@@ -55,7 +55,10 @@ export type CallNumbersMode = "lossless" | "js";
 
 export interface CallOptions {
   numbers?: CallNumbersMode;
-  /** Aborts the in-flight HTTP request (surfaces as a timeout `TransportError`). */
+  /**
+   * Aborts the in-flight HTTP request. Surfaces as `TransportError` with
+   * reason `"aborted"` — a deliberate cancel, never counted by the breaker.
+   */
   signal?: AbortSignal;
 }
 
@@ -78,6 +81,7 @@ export class VerusClient {
   private readonly transport: RpcTransport;
 
   constructor(config: VerusClientConfig) {
+    let base: RpcTransport;
     if (config.transport !== undefined) {
       if (
         config.url !== undefined ||
@@ -90,8 +94,7 @@ export class VerusClient {
           "VerusClient: url/user/pass/fetchImpl/timeoutMs configure the default transport and are ignored when a transport is injected — pass one or the other",
         );
       }
-      this.transport =
-        config.resilience !== undefined ? withResilience(config.transport, config.resilience) : config.transport;
+      base = config.transport;
     } else {
       if (config.url === undefined) {
         throw new TypeError("VerusClient: url is required (or pass a transport)");
@@ -99,15 +102,15 @@ export class VerusClient {
       if ((config.user === undefined) !== (config.pass === undefined)) {
         throw new TypeError("VerusClient: user and pass must be provided together (omit both for public nodes)");
       }
-      const daemon = new DaemonTransport({
+      base = new DaemonTransport({
         url: config.url,
         ...(config.user !== undefined ? { user: config.user } : {}),
         ...(config.pass !== undefined ? { pass: config.pass } : {}),
         ...(config.fetchImpl !== undefined ? { fetchImpl: config.fetchImpl } : {}),
         ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
       });
-      this.transport = config.resilience !== undefined ? withResilience(daemon, config.resilience) : daemon;
     }
+    this.transport = config.resilience !== undefined ? withResilience(base, config.resilience) : base;
     this.chain = new ChainApi(this.transport);
     this.wallet = new WalletApi(this.transport);
     this.identity = new IdentityApi(this.transport);

@@ -194,8 +194,9 @@ export class ShieldedApi {
         lastPollError = undefined;
       } catch (err) {
         // The operation is already in flight — a transient transport failure
-        // while polling must not abandon the opid. Poll until the deadline.
-        if (!(err instanceof TransportError)) throw err;
+        // while polling must not abandon the opid. But bad credentials and
+        // caller aborts cannot recover by re-polling: fail those immediately.
+        if (!(err instanceof TransportError) || err.reason === "auth" || err.reason === "aborted") throw err;
         lastPollError = err;
       }
       if (status !== undefined) {
@@ -211,7 +212,7 @@ export class ShieldedApi {
       }
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
-        throw new OperationTimeoutError(options.opid, timeout, lastPollError === undefined ? undefined : { cause: lastPollError });
+        throw new OperationTimeoutError(options.opid, timeout, lastPollError);
       }
       await sleep(Math.min(interval, remaining));
     }

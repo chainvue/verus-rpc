@@ -31,9 +31,13 @@ export interface ResilienceConfig {
 const DEFAULTS = { timeoutMs: 10_000, failuresBeforeOpen: 5, recoveryMs: 30_000 };
 
 function isTransportFailure(err: unknown): boolean {
-  // "auth" (HTTP 401/403) is a client configuration problem — the node is
-  // healthy, so it must not open the circuit.
-  return (err instanceof TransportError && err.reason !== "auth") || err instanceof TaskCancelledError;
+  // "auth" (HTTP 401/403) and "aborted" (deliberate caller cancel) are
+  // client-side conditions — the node is healthy, so neither may open the
+  // circuit. Policy timeouts (TaskCancelledError) DO count.
+  return (
+    (err instanceof TransportError && err.reason !== "auth" && err.reason !== "aborted") ||
+    err instanceof TaskCancelledError
+  );
 }
 
 /** Wrap a transport with timeout + circuit breaker per `config`. */
@@ -53,10 +57,17 @@ export function withResilience(transport: RpcTransport, config: ResilienceConfig
       try {
         // The policy's signal aborts the in-flight HTTP request on policy
         // timeout — without it, a timed-out call keeps running against the
-        // daemon (duplicate-send hazard if the caller retries).
-        return await policy.execute(
-          ({ signal: policySignal }) => transport.request(method, params, policySignal),
-          signal,
+        // daemon (duplicate-send hazard if the caller retries). The caller's
+        // signal is combined HERE rather than handed to cockatiel: that way a
+        // deliberate caller abort surfaces from the transport as reason
+        // "aborted", which isTransportFailure exempts — only real node
+        // trouble (policy timeouts included) moves the breaker.
+        return await policy.execute(({ signal: policySignal }) =>
+          transport.request(
+            method,
+            params,
+            signal === undefined ? policySignal : AbortSignal.any([policySignal, signal]),
+          ),
         );
       } catch (err) {
         if (err instanceof BrokenCircuitError) {

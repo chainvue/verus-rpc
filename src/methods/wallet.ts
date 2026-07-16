@@ -407,8 +407,9 @@ export class WalletApi {
         lastPollError = undefined;
       } catch (err) {
         // The send is already in flight — a transient transport failure while
-        // polling must not abandon the opid. Keep polling until the deadline.
-        if (!(err instanceof TransportError)) throw err;
+        // polling must not abandon the opid. But bad credentials and caller
+        // aborts cannot recover by re-polling: fail those immediately.
+        if (!(err instanceof TransportError) || err.reason === "auth" || err.reason === "aborted") throw err;
         lastPollError = err;
       }
       const status = statuses?.find((s) => s.id === opid);
@@ -431,7 +432,7 @@ export class WalletApi {
       }
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
-        throw new OperationTimeoutError(opid, timeout, lastPollError === undefined ? undefined : { cause: lastPollError });
+        throw new OperationTimeoutError(opid, timeout, lastPollError);
       }
       await sleep(Math.min(interval, remaining));
     }
