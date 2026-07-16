@@ -30,7 +30,13 @@ token — no precision loss on the way out either. Conversion params
 output.
 
 Errors: `OperationFailedError` (daemon reported failure, carries the code)
-and `OperationTimeoutError` (no final state within the deadline).
+and `OperationTimeoutError` (no final state within the deadline; carries
+`timeoutMs`, and the last poll failure as `cause` if polling itself was
+failing). While waiting, transient transport failures are tolerated until
+the deadline — the operation is already in flight and is never abandoned —
+but `auth` (bad credentials) and `aborted` (caller cancel) fail immediately.
+On a timeout the operation may still complete on the daemon: check the opid
+(`getOperationStatus`) before retrying a send.
 
 ## Shielded
 
