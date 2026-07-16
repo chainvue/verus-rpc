@@ -28,6 +28,14 @@ describe("linkedAbort", () => {
     expect((signal.reason as Error).message).toBe("dead on arrival");
   });
 
+  it("arms nothing when a source is pre-aborted — no listener lands on live sources", () => {
+    const live = new AbortController();
+    const { signal, unlink } = linkedAbort([live.signal, AbortSignal.abort()], 60_000);
+    expect(signal.aborted).toBe(true);
+    expect(getEventListeners(live.signal, "abort")).toHaveLength(0);
+    unlink(); // no-op, must not throw
+  });
+
   it("skips undefined sources", () => {
     const controller = new AbortController();
     const { signal } = linkedAbort([undefined, controller.signal, undefined]);
@@ -45,26 +53,48 @@ describe("linkedAbort", () => {
     expect(signal.aborted).toBe(false);
     expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
   });
+
+  it("tears itself down when one source aborts — other sources are released without unlink", () => {
+    const a = new AbortController();
+    const b = new AbortController();
+    const { signal } = linkedAbort([a.signal, b.signal]);
+    a.abort();
+    expect(signal.aborted).toBe(true);
+    // Even though the guarded work never settled (unlink never called), the
+    // abort itself must release the registration on the other source.
+    expect(getEventListeners(b.signal, "abort")).toHaveLength(0);
+  });
+
+  it("tears itself down when the timeout fires — sources are released without unlink", async () => {
+    const controller = new AbortController();
+    const { signal } = linkedAbort([controller.signal], 5);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(signal.aborted).toBe(true);
+    expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
+  });
 });
 
 describe("DaemonTransport abort-wiring teardown", () => {
-  it("leaves zero listeners on a long-lived caller signal after requests settle", async () => {
+  it("attaches one listener to the caller signal while in flight and detaches on settle", async () => {
+    let releaseResponse: (() => void) | undefined;
     const fetchImpl: typeof fetch = () =>
-      Promise.resolve(new Response('{"result":1,"error":null}', { status: 200 }));
+      new Promise((resolve) => {
+        releaseResponse = () => resolve(new Response('{"result":1,"error":null}', { status: 200 }));
+      });
     const transport = new DaemonTransport({ url: "http://127.0.0.1:27486", fetchImpl });
     const longLived = new AbortController();
 
-    // Before the fix, each request parked one AbortSignal.any registration on
-    // the caller signal until the 60s timeout signal fired — 20 concurrent
-    // requests over one signal meant 20 lingering listeners (and a
-    // MaxListenersExceededWarning from the 11th).
-    await Promise.all(
-      Array.from({ length: 20 }, () => transport.request("getblockcount", [], longLived.signal)),
-    );
+    const pending = transport.request("getblockcount", [], longLived.signal);
+    // In flight: exactly the one live registration this request owns.
+    expect(getEventListeners(longLived.signal, "abort")).toHaveLength(1);
+    releaseResponse!();
+    await pending;
+    // Settled: the registration must be gone (this is what a dropped
+    // finally/unlink would break — the listener would linger here).
     expect(getEventListeners(longLived.signal, "abort")).toHaveLength(0);
   });
 
-  it("leaves zero listeners after a failed request too", async () => {
+  it("detaches from the caller signal when the request fails, too", async () => {
     const fetchImpl: typeof fetch = () => Promise.reject(new Error("connection refused"));
     const transport = new DaemonTransport({ url: "http://127.0.0.1:27486", fetchImpl });
     const longLived = new AbortController();

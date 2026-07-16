@@ -100,9 +100,8 @@ export class DaemonTransport implements RpcTransport {
 
     // Body read stays inside the try: an abort or connection drop while the
     // body streams must classify as TransportError like any other failure.
-    // The timer and caller-signal listener are torn down in `finally` — they
-    // must not outlive the request (a long-lived caller signal would
-    // otherwise accumulate one listener per call until the 60s timer fired).
+    // The timer and caller-signal listener must not outlive the request —
+    // teardown runs in `finally`.
     let status: number;
     let ok: boolean;
     let text: string;

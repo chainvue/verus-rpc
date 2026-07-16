@@ -66,9 +66,6 @@ export function withResilience(transport: RpcTransport, config: ResilienceConfig
         // (not AbortSignal.any) so the per-call composite detaches from a
         // long-lived caller signal once the request settles.
         return await policy.execute(async ({ signal: policySignal }) => {
-          if (signal === undefined) {
-            return transport.request(method, params, policySignal);
-          }
           const { signal: combined, unlink } = linkedAbort([policySignal, signal]);
           try {
             return await transport.request(method, params, combined);
