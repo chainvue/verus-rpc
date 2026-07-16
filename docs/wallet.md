@@ -38,6 +38,12 @@ but `auth` (bad credentials) and `aborted` (caller cancel) fail immediately.
 On a timeout the operation may still complete on the daemon: check the opid
 (`getOperationStatus`) before retrying a send.
 
+One edge is deliberately NOT retry-shaped: a final `success` status whose
+result is missing `txid` throws `ResponseMappingError` (naming
+`z_getoperationstatus` / `result.txid`), not `OperationFailedError` — the
+send completed on the daemon and only the response shape drifted, so
+retrying it would double-spend.
+
 ## Shielded
 
 ```ts

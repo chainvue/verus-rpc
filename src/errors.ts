@@ -99,10 +99,7 @@ export class ResponseMappingError extends Error {
   }
 }
 
-/**
- * An async wallet operation (opid) did not deliver a result: status "failed"
- * or "cancelled", or a "success" whose result carried no txid.
- */
+/** An async wallet operation (opid) finished with status "failed" or "cancelled". */
 export class OperationFailedError extends Error {
   readonly opid: string;
   readonly status: string;

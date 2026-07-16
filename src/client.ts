@@ -42,21 +42,24 @@ export interface VerusClientConfig {
   transport?: RpcTransport;
 }
 
+/** Config keys that configure the built-in `DaemonTransport` — mutually exclusive with an injected `transport`. */
+type DefaultTransportOptionKey = Exclude<keyof VerusClientConfig, "transport" | "resilience">;
+
 /**
- * The config keys that configure the built-in `DaemonTransport` and are
- * therefore mutually exclusive with an injected `transport`. The `Record`
- * shape makes the compiler enforce the list stays complete: adding a
- * default-transport option to `VerusClientConfig` without listing it here
- * (or excluding it below) is a type error.
+ * Compiler-enforced completeness: a new `VerusClientConfig` key is a type
+ * error here until classified. A default-transport option gets `true` below;
+ * anything else joins `resilience` in the `Exclude` above — do NOT add it
+ * here just to silence the error, or valid `{ transport, newKey }` configs
+ * would start throwing.
  */
-const IS_DEFAULT_TRANSPORT_OPTION: Record<Exclude<keyof VerusClientConfig, "transport" | "resilience">, true> = {
+const IS_DEFAULT_TRANSPORT_OPTION: Record<DefaultTransportOptionKey, true> = {
   url: true,
   user: true,
   pass: true,
   fetchImpl: true,
   timeoutMs: true,
 };
-const DEFAULT_TRANSPORT_OPTION_KEYS = Object.keys(IS_DEFAULT_TRANSPORT_OPTION) as (keyof typeof IS_DEFAULT_TRANSPORT_OPTION)[];
+const DEFAULT_TRANSPORT_OPTION_KEYS = Object.keys(IS_DEFAULT_TRANSPORT_OPTION) as DefaultTransportOptionKey[];
 
 /**
  * How `call()` surfaces JSON numbers:
