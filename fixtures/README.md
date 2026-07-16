@@ -32,6 +32,7 @@ fixtures are parsed losslessly by the conformance suite, never through
 | `getvdxfid.json` | https://api.verus.services, `vrsc::system.currency.export` | 2026-07-12 | |
 | `getblocksubsidy.json` | https://api.verus.services, height 4147000 | 2026-07-12 | `"miner":3.0` single-decimal token |
 | `getblockchaininfo.json` | https://api.verus.services | 2026-07-12 | T2 reference shape |
+| `coinsupply.json` | VRSCTEST node probe (daemon v1.2.17), height 1000000 | 2026-07-17 | Supply-scale amounts; trailing-zero token `55999999.99700000`. Not on the public gateway (`-32601`); daemon reports failures in-band (`{"error": ...}`) |
 
 T1 discipline: synthetic fixtures are a stopgap — the tier promise ("no T1
 method without a recorded fixture") is only fully honored once the wallet

@@ -68,6 +68,9 @@ export interface ZTotalBalanceResult {
   [key: string]: unknown;
 }
 
+/** Rescan behavior for key / viewing-key imports. Daemon default: "whenkeyisnew". */
+export type ZRescanOption = "yes" | "no" | "whenkeyisnew";
+
 export interface WaitForOperationOptions {
   opid: string;
   /** Default 1s. */
@@ -294,7 +297,7 @@ export class ShieldedApi {
    */
   async zImportKey(options: {
     zkey: string;
-    rescan?: "yes" | "no" | "whenkeyisnew";
+    rescan?: ZRescanOption;
     startHeight?: number;
   }): Promise<Record<string, unknown>> {
     const params: unknown[] = [options.zkey];
@@ -332,7 +335,7 @@ export class ShieldedApi {
    */
   async zImportViewingKey(options: {
     viewingKey: string;
-    rescan?: "yes" | "no" | "whenkeyisnew";
+    rescan?: ZRescanOption;
     startHeight?: number;
   }): Promise<Record<string, unknown>> {
     const params: unknown[] = [options.viewingKey];
@@ -346,8 +349,11 @@ export class ShieldedApi {
   /**
    * SECRET (all keys): dump the full wallet — transparent AND shielded keys
    * — to a file under the daemon's `-exportdir`, on the NODE's filesystem.
-   * Returns the full path there. `omitEmptyTAddresses` skips keyless
-   * transparent addresses (daemon default false).
+   * Returns the full path there. CAUTION `omitEmptyTAddresses` (source
+   * v1.2.17): it omits KEYED transparent addresses that merely have no
+   * indexed UTXOs / IDs / history — their private keys are then MISSING
+   * from the backup. The daemon's own help warns not to use it unless every
+   * address of interest is known to be included.
    */
   async zExportWallet(options: { filename: string; omitEmptyTAddresses?: boolean }): Promise<string> {
     const params: unknown[] = [options.filename];

@@ -1,5 +1,5 @@
 import { amountParam } from "../amount.js";
-import { VerusRpcError } from "../errors.js";
+import { RpcErrorCode, VerusRpcError } from "../errors.js";
 import { isLosslessNumber } from "../lossless.js";
 import { expectObject, mapAmount, mapBoolean, mapInt, mapString, mapStringOptional, withPassthrough } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
@@ -67,7 +67,6 @@ export function mapGetVdxfId(raw: unknown): GetVdxfIdResult {
   });
 }
 
-/** Blockchain and general reads + raw-transaction chain. */
 /** Result of `coinsupply` — all pool sizes as bigint sats. */
 export interface CoinSupplyResult {
   /** Native coin symbol (e.g. "VRSC", "VRSCTEST"). */
@@ -84,6 +83,31 @@ export interface CoinSupplyResult {
   [key: string]: unknown;
 }
 
+export function mapCoinSupply(raw: unknown): CoinSupplyResult {
+  const method = "coinsupply";
+  const obj = expectObject(raw, method);
+  // The daemon reports failures in-band on a success envelope
+  // ({"error": "invalid height"}) — never as a JSON-RPC error body.
+  const inBandError = obj["error"];
+  if (inBandError !== undefined && inBandError !== null) {
+    throw new VerusRpcError(
+      method,
+      RpcErrorCode.RPC_NO_CODE,
+      typeof inBandError === "string" ? inBandError : JSON.stringify(inBandError),
+    );
+  }
+  const ctx = (field: string): { method: string; field: string } => ({ method, field });
+  return withPassthrough(obj, {
+    coin: mapString(obj["coin"], ctx("coin")),
+    height: mapInt(obj["height"], ctx("height")),
+    supply: mapAmount(obj["supply"], ctx("supply")),
+    immature: mapAmount(obj["immature"], ctx("immature")),
+    zfunds: mapAmount(obj["zfunds"], ctx("zfunds")),
+    total: mapAmount(obj["total"], ctx("total")),
+  });
+}
+
+/** Blockchain and general reads + raw-transaction chain. */
 export class BlockchainApi {
   constructor(private readonly transport: RpcTransport) {}
 
@@ -304,39 +328,36 @@ export class BlockchainApi {
   /**
    * Coin supply at `height` (default: current tip). T1 — supply values are
    * bigint sats; chain-total magnitudes are exactly where float64 loses
-   * satoshi precision. The daemon reads the height param with `uni_get_str`,
-   * so it must go on the wire as a string — a JSON number would silently
-   * mean "current height" (verified against daemon source v1.2.17). The
-   * daemon reports failures in-band (`{"error": "invalid height"}` on a
-   * success envelope); those surface as `VerusRpcError` with code 0.
-   * Verified live: near-tip heights on a mature chain can take the daemon
-   * MINUTES to answer — pass a `timeoutMs` sized for that.
+   * satoshi precision. Daemon contract (source v1.2.17): the height is read
+   * with `uni_get_str`, so it goes on the wire as a string — a raw JSON
+   * number reads as "" → height 0 → the in-band "invalid height" error.
+   * Failures arrive in-band (`{"error": ...}` on a success envelope) and
+   * surface as `VerusRpcError` with code `RPC_NO_CODE`. Verified live:
+   * near-tip heights on a mature chain can take the daemon MINUTES to
+   * answer — pass a `timeoutMs` sized for that.
    */
   async coinSupply(options?: { height?: number }): Promise<CoinSupplyResult> {
-    const params: unknown[] = options?.height === undefined ? [] : [String(options.height)];
-    const obj = expectObject(await this.transport.request("coinsupply", params), "coinsupply");
-    const inBandError = obj["error"];
-    if (typeof inBandError === "string") {
-      throw new VerusRpcError("coinsupply", 0, inBandError);
+    const height = options?.height;
+    if (height !== undefined && (!Number.isSafeInteger(height) || height < 0)) {
+      // The daemon parses the string with atoi — "1e+21" would silently
+      // become height 1, "420.7" would truncate. Refuse instead.
+      throw new RangeError(`coinsupply: height must be a non-negative integer, got ${String(height)}`);
     }
-    return withPassthrough(obj, {
-      coin: mapString(obj["coin"], { method: "coinsupply", field: "coin" }),
-      height: mapInt(obj["height"], { method: "coinsupply", field: "height" }),
-      supply: mapAmount(obj["supply"], { method: "coinsupply", field: "supply" }),
-      immature: mapAmount(obj["immature"], { method: "coinsupply", field: "immature" }),
-      zfunds: mapAmount(obj["zfunds"], { method: "coinsupply", field: "zfunds" }),
-      total: mapAmount(obj["total"], { method: "coinsupply", field: "total" }),
-    });
+    const params: unknown[] = height === undefined ? [] : [String(height)];
+    return mapCoinSupply(await this.transport.request("coinsupply", params));
   }
 
   /**
    * Re-verify the local block database. Expensive — the daemon holds its
-   * main lock for the duration. `checkLevel` 0-4 (daemon default 3),
-   * `numBlocks` default 288, 0 = all. T1 boolean.
+   * main lock for the duration. `checkLevel` 0-4, `numBlocks` (0 = all);
+   * omitted entirely, the node uses its own `-checklevel`/`-checkblocks`
+   * (3/288 unless configured). Params are positional, so passing
+   * `numBlocks` without `checkLevel` sends the compiled-in default 3 —
+   * OVERRIDING a `-checklevel` the node was started with; pass both to be
+   * explicit. T1 boolean.
    */
   async verifyChain(options?: { checkLevel?: number; numBlocks?: number }): Promise<boolean> {
     const params: unknown[] = [];
-    // Positional gap-fill with the daemon's own default (source v1.2.17).
     if (options?.checkLevel !== undefined || options?.numBlocks !== undefined) {
       params.push(options?.checkLevel ?? 3);
     }

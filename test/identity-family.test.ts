@@ -239,4 +239,10 @@ describe("T2 signatures & trust", () => {
     // No filter still sends [] — zero params is rejected by the daemon.
     expect(mock.calls[1]!.params).toEqual([[]]);
   });
+
+  it("getIdentityTrust passes through the null that v1.2.x daemons actually send", async () => {
+    const { mock, identity } = setup();
+    mock.respondJson("getidentitytrust", "null");
+    await expect(identity.getIdentityTrust()).resolves.toBeNull();
+  });
 });

@@ -1,5 +1,5 @@
 import { linkedAbort } from "./abort.js";
-import { TransportError, VerusRpcError } from "./errors.js";
+import { RpcErrorCode, TransportError, VerusRpcError } from "./errors.js";
 import { isLosslessNumber, parseLossless, stringifyLossless } from "./lossless.js";
 
 /**
@@ -171,9 +171,13 @@ export class DaemonTransport implements RpcTransport {
 function extractRpcError(error: unknown): RpcErrorBody {
   if (error !== null && typeof error === "object") {
     const raw = error as { code?: unknown; message?: unknown };
-    const code = isLosslessNumber(raw.code) ? Number(raw.code.toString()) : typeof raw.code === "number" ? raw.code : 0;
+    const code = isLosslessNumber(raw.code)
+      ? Number(raw.code.toString())
+      : typeof raw.code === "number"
+        ? raw.code
+        : RpcErrorCode.RPC_NO_CODE;
     const message = typeof raw.message === "string" ? raw.message : JSON.stringify(error);
     return { code, message };
   }
-  return { code: 0, message: String(error) };
+  return { code: RpcErrorCode.RPC_NO_CODE, message: String(error) };
 }

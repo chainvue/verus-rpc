@@ -75,5 +75,15 @@ describe.skipIf(PUBLIC_URL === undefined || PUBLIC_URL === "")(
       // answer with a JSON-RPC error, NOT a transport failure.
       await expect(client.wallet.getBalance()).rejects.toBeInstanceOf(VerusRpcError);
     });
+
+    it("serves getspentinfo (whitelisted) but not coinsupply — pinned 2026-07-17", async () => {
+      // Chain data, stable: the spend of an output of an early VRSCTEST tx.
+      const spent = await client.addressIndex.getSpentInfo({
+        txid: "ae62836b65e6f229187258facfb764cd46c6c49bd094c355470742204e7a9c0c",
+        index: 0,
+      });
+      expect(spent.height).toBe(1_515);
+      await expect(client.blockchain.coinSupply({ height: 1_000 })).rejects.toBeInstanceOf(VerusRpcError);
+    });
   },
 );

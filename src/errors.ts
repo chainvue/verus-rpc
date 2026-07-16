@@ -65,11 +65,18 @@ export const RpcErrorCode = {
   RPC_WALLET_WRONG_ENC_STATE: -15,
   RPC_WALLET_ENCRYPTION_FAILED: -16,
   RPC_WALLET_ALREADY_UNLOCKED: -17,
+  // Not from rpcprotocol.h. Some handlers (e.g. coinsupply) report failures
+  // in-band on a success envelope with no JSON-RPC code at all; error bodies
+  // can also omit `code`. Both surface with this sentinel.
+  RPC_NO_CODE: 0,
 } as const;
 
 export type RpcErrorCode = (typeof RpcErrorCode)[keyof typeof RpcErrorCode];
 
-/** The daemon answered the call with a JSON-RPC error body. */
+/**
+ * The daemon reported an error: a JSON-RPC error body, or an in-band
+ * `error` field on a success envelope (then `code` is `RPC_NO_CODE`).
+ */
 export class VerusRpcError extends Error {
   readonly method: string;
   readonly code: number;

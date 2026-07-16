@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { parseAmount } from "../src/amount.js";
-import { VerusRpcError } from "../src/errors.js";
+import { RpcErrorCode, VerusRpcError } from "../src/errors.js";
 import { AddressIndexApi } from "../src/methods/addressindex.js";
 import { BlockchainApi } from "../src/methods/blockchain.js";
 import { CurrencyApi } from "../src/methods/currency.js";
@@ -239,11 +239,21 @@ describe("BlockchainApi — coinSupply / verifyChain", () => {
     expect(mock.calls[0]!.params).toEqual(["420"]);
   });
 
-  it("coinSupply surfaces the daemon's in-band error as VerusRpcError", async () => {
+  it("coinSupply surfaces the daemon's in-band error as VerusRpcError with RPC_NO_CODE", async () => {
     const mock = new MockTransport().respondJson("coinsupply", '{"error":"invalid height"}');
     const err = await new BlockchainApi(mock).coinSupply({ height: 999_999_999 }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(VerusRpcError);
+    expect((err as VerusRpcError).code).toBe(RpcErrorCode.RPC_NO_CODE);
     expect((err as VerusRpcError).message).toContain("invalid height");
+  });
+
+  it("coinSupply refuses heights the daemon's atoi would silently mangle", async () => {
+    const mock = new MockTransport();
+    const bc = new BlockchainApi(mock);
+    await expect(bc.coinSupply({ height: 1e21 })).rejects.toThrow(RangeError);
+    await expect(bc.coinSupply({ height: 420.7 })).rejects.toThrow(RangeError);
+    await expect(bc.coinSupply({ height: -1 })).rejects.toThrow(RangeError);
+    expect(mock.calls).toHaveLength(0);
   });
 
   it("verifyChain gap-fills checkLevel with the daemon default when only numBlocks is given", async () => {

@@ -42,6 +42,7 @@ export {
 } from "./methods/addressindex.js";
 export {
   BlockchainApi,
+  mapCoinSupply,
   mapGetVdxfId,
   type CoinSupplyResult,
   type CreateRawTransactionInput,
@@ -51,6 +52,7 @@ export {
 export {
   ShieldedApi,
   type WaitForOperationOptions,
+  type ZRescanOption,
   type ZReceivedEntry,
   type ZSendManyEntry,
   type ZSendManyOptions,
