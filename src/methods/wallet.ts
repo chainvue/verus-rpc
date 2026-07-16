@@ -91,7 +91,7 @@ export interface SendCurrencyOutput {
   amount: bigint;
   /** Source currency; defaults to the chain's native currency. */
   currency?: string | undefined;
-  /** Convert to this currency on the way (typed first-class in Etappe 4). */
+  /** Convert to this currency on the way. */
   convertto?: string | undefined;
   /** Conversion routing via this (fractional) currency. */
   via?: string | undefined;

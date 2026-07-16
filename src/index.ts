@@ -38,10 +38,12 @@ export {
   type AddressDelta,
   type AddressRangeOptions,
   type AddressUtxo,
+  type SpentInfo,
 } from "./methods/addressindex.js";
 export {
   BlockchainApi,
   mapGetVdxfId,
+  type CoinSupplyResult,
   type CreateRawTransactionInput,
   type GetVdxfIdResult,
   type RawTransactionOptions,

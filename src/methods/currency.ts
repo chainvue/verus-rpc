@@ -546,4 +546,26 @@ export class CurrencyApi {
   async getPendingTransfers(options: { chainName: string }): Promise<unknown[]> {
     return requestT2(this.transport, "getpendingtransfers", [options.chainName]);
   }
+
+  /**
+   * Trust ratings this wallet keeps for currencies. T2. The daemon requires
+   * the currency-array param — `[]` is sent when no filter is given (source
+   * v1.2.17: `params.size() != 1` throws, mirroring `getidentitytrust`).
+   * Daemon quirk, verified live on v1.2.x: the reply is always `null` — the
+   * handler builds its `{setratings, currencytrustmode}` result on an
+   * uninitialized (non-object) UniValue, so every pushKV is silently
+   * dropped. The declared shape is kept for daemons that fix this.
+   */
+  async getCurrencyTrust(options?: { currencyIds?: string[] }): Promise<Record<string, unknown> | null> {
+    return requestT2(this.transport, "getcurrencytrust", [options?.currencyIds ?? []]);
+  }
+
+  /**
+   * Set/clear currency trust ratings and the sync `currencytrustmode`
+   * (daemon JSON options, passthrough — `clearall`, `setratings`,
+   * `removeratings`, `currencytrustmode`).
+   */
+  async setCurrencyTrust(options: Record<string, unknown>): Promise<void> {
+    await this.transport.request("setcurrencytrust", [options]);
+  }
 }

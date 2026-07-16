@@ -304,4 +304,65 @@ export class ShieldedApi {
     if (options.startHeight !== undefined) params.push(options.startHeight);
     return requestT2(this.transport, "z_importkey", params);
   }
+
+  /**
+   * Validate a shielded address (sprout/sapling type, `ismine`). Works
+   * without wallet access. T2.
+   */
+  async zValidateAddress(options: { address: string }): Promise<Record<string, unknown>> {
+    return requestT2(this.transport, "z_validateaddress", [options.address]);
+  }
+
+  /**
+   * SECRET (view capability): export the viewing key for a shielded
+   * address. Do not log the result — it reveals all incoming transactions
+   * of the address.
+   */
+  async zExportViewingKey(options: { zaddr: string }): Promise<string> {
+    return mapString(await this.transport.request("z_exportviewingkey", [options.zaddr]), {
+      method: "z_exportviewingkey",
+      field: "(result)",
+    });
+  }
+
+  /**
+   * Import a viewing key (watch-only shielded address). Returns the address
+   * type + address. `rescan` controls history rescanning (`whenkeyisnew`
+   * daemon default).
+   */
+  async zImportViewingKey(options: {
+    viewingKey: string;
+    rescan?: "yes" | "no" | "whenkeyisnew";
+    startHeight?: number;
+  }): Promise<Record<string, unknown>> {
+    const params: unknown[] = [options.viewingKey];
+    if (options.rescan !== undefined || options.startHeight !== undefined) {
+      params.push(options.rescan ?? "whenkeyisnew");
+    }
+    if (options.startHeight !== undefined) params.push(options.startHeight);
+    return requestT2(this.transport, "z_importviewingkey", params);
+  }
+
+  /**
+   * SECRET (all keys): dump the full wallet — transparent AND shielded keys
+   * — to a file under the daemon's `-exportdir`, on the NODE's filesystem.
+   * Returns the full path there. `omitEmptyTAddresses` skips keyless
+   * transparent addresses (daemon default false).
+   */
+  async zExportWallet(options: { filename: string; omitEmptyTAddresses?: boolean }): Promise<string> {
+    const params: unknown[] = [options.filename];
+    if (options.omitEmptyTAddresses !== undefined) params.push(options.omitEmptyTAddresses);
+    return mapString(await this.transport.request("z_exportwallet", params), {
+      method: "z_exportwallet",
+      field: "(result)",
+    });
+  }
+
+  /**
+   * Import a `zExportWallet` dump from the NODE's filesystem (transparent
+   * and shielded keys; triggers a rescan). Void.
+   */
+  async zImportWallet(options: { filename: string }): Promise<void> {
+    await this.transport.request("z_importwallet", [options.filename]);
+  }
 }

@@ -62,6 +62,17 @@ export interface AddressRangeOptions {
   end?: number;
 }
 
+/** Result of `getspentinfo` — where an output was consumed. */
+export interface SpentInfo {
+  /** Txid of the SPENDING transaction. */
+  txid: string;
+  /** Input index within the spending transaction. */
+  index: number;
+  /** Height of the block containing the spend. */
+  height: number;
+  [key: string]: unknown;
+}
+
 function mapCurrencyAmounts(
   raw: unknown,
   method: string,
@@ -162,6 +173,25 @@ export class AddressIndexApi {
     return mapStringArray(await this.transport.request("getaddresstxids", [query]), {
       method: "getaddresstxids",
       field: "(result)",
+    });
+  }
+
+  /**
+   * Where an output was spent: the spending txid + input index. Needs the
+   * daemon's spent index; for unspent (or unindexed) outputs the daemon
+   * answers RPC_INVALID_ADDRESS_OR_KEY ("Unable to get spent info") — that
+   * surfaces as `VerusRpcError`, it does not mean the output is invalid.
+   */
+  async getSpentInfo(options: { txid: string; index: number }): Promise<SpentInfo> {
+    const obj = expectObject(
+      await this.transport.request("getspentinfo", [{ txid: options.txid, index: options.index }]),
+      "getspentinfo",
+    );
+    const ctx = (field: string): FieldContext => ({ method: "getspentinfo", field });
+    return withPassthrough(obj, {
+      txid: mapString(obj["txid"], ctx("txid")),
+      index: mapInt(obj["index"], ctx("index")),
+      height: mapInt(obj["height"], ctx("height")),
     });
   }
 }

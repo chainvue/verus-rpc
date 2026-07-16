@@ -1,6 +1,7 @@
 import { amountParam } from "../amount.js";
+import { VerusRpcError } from "../errors.js";
 import { isLosslessNumber } from "../lossless.js";
-import { expectObject, mapString, mapStringOptional, withPassthrough } from "../mapping.js";
+import { expectObject, mapAmount, mapBoolean, mapInt, mapString, mapStringOptional, withPassthrough } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
 import { requestT2 } from "./t2.js";
 
@@ -67,6 +68,22 @@ export function mapGetVdxfId(raw: unknown): GetVdxfIdResult {
 }
 
 /** Blockchain and general reads + raw-transaction chain. */
+/** Result of `coinsupply` — all pool sizes as bigint sats. */
+export interface CoinSupplyResult {
+  /** Native coin symbol (e.g. "VRSC", "VRSCTEST"). */
+  coin: string;
+  height: number;
+  /** Transparent pool — bigint sats. */
+  supply: bigint;
+  /** Mined but not yet spendable — bigint sats. */
+  immature: bigint;
+  /** Shielded pool — bigint sats. */
+  zfunds: bigint;
+  /** supply + zfunds — bigint sats. */
+  total: bigint;
+  [key: string]: unknown;
+}
+
 export class BlockchainApi {
   constructor(private readonly transport: RpcTransport) {}
 
@@ -282,5 +299,51 @@ export class BlockchainApi {
   /** Decode a hex script into its assembly + addresses. T2. */
   async decodeScript(options: { hex: string }): Promise<Record<string, unknown>> {
     return requestT2(this.transport, "decodescript", [options.hex]);
+  }
+
+  /**
+   * Coin supply at `height` (default: current tip). T1 — supply values are
+   * bigint sats; chain-total magnitudes are exactly where float64 loses
+   * satoshi precision. The daemon reads the height param with `uni_get_str`,
+   * so it must go on the wire as a string — a JSON number would silently
+   * mean "current height" (verified against daemon source v1.2.17). The
+   * daemon reports failures in-band (`{"error": "invalid height"}` on a
+   * success envelope); those surface as `VerusRpcError` with code 0.
+   * Verified live: near-tip heights on a mature chain can take the daemon
+   * MINUTES to answer — pass a `timeoutMs` sized for that.
+   */
+  async coinSupply(options?: { height?: number }): Promise<CoinSupplyResult> {
+    const params: unknown[] = options?.height === undefined ? [] : [String(options.height)];
+    const obj = expectObject(await this.transport.request("coinsupply", params), "coinsupply");
+    const inBandError = obj["error"];
+    if (typeof inBandError === "string") {
+      throw new VerusRpcError("coinsupply", 0, inBandError);
+    }
+    return withPassthrough(obj, {
+      coin: mapString(obj["coin"], { method: "coinsupply", field: "coin" }),
+      height: mapInt(obj["height"], { method: "coinsupply", field: "height" }),
+      supply: mapAmount(obj["supply"], { method: "coinsupply", field: "supply" }),
+      immature: mapAmount(obj["immature"], { method: "coinsupply", field: "immature" }),
+      zfunds: mapAmount(obj["zfunds"], { method: "coinsupply", field: "zfunds" }),
+      total: mapAmount(obj["total"], { method: "coinsupply", field: "total" }),
+    });
+  }
+
+  /**
+   * Re-verify the local block database. Expensive — the daemon holds its
+   * main lock for the duration. `checkLevel` 0-4 (daemon default 3),
+   * `numBlocks` default 288, 0 = all. T1 boolean.
+   */
+  async verifyChain(options?: { checkLevel?: number; numBlocks?: number }): Promise<boolean> {
+    const params: unknown[] = [];
+    // Positional gap-fill with the daemon's own default (source v1.2.17).
+    if (options?.checkLevel !== undefined || options?.numBlocks !== undefined) {
+      params.push(options?.checkLevel ?? 3);
+    }
+    if (options?.numBlocks !== undefined) params.push(options.numBlocks);
+    return mapBoolean(await this.transport.request("verifychain", params), {
+      method: "verifychain",
+      field: "(result)",
+    });
   }
 }
