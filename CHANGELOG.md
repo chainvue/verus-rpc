@@ -1,5 +1,16 @@
 # Changelog
 
+# [0.5.0](https://github.com/chainvue/verus-rpc/compare/v0.4.0...v0.5.0) (2026-07-16)
+
+
+* refactor(methods)!: single getBlockCount entry point; shared polling + amount helpers ([521b200](https://github.com/chainvue/verus-rpc/commit/521b200a93d9d079b96358a3c2e6580be82ad76b))
+
+
+### BREAKING CHANGES
+
+* BlockchainApi.getBlockCount is removed — use
+client.chain.getBlockCount (identical RPC and result).
+
 # [0.4.0](https://github.com/chainvue/verus-rpc/compare/v0.3.0...v0.4.0) (2026-07-16)
 
 
