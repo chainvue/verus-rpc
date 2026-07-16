@@ -617,10 +617,13 @@ export class IdentityApi {
     return requestT2(this.transport, "verifysignature", [options]);
   }
 
-  /** Trust ratings this wallet keeps for identities. T2. */
+  /**
+   * Trust ratings this wallet keeps for identities. T2. The daemon requires
+   * the id-array param — `[]` is sent when no filter is given. Note: current
+   * daemons (v1.2.x) return ALL ratings regardless of the filter.
+   */
   async getIdentityTrust(options?: { identityIds?: string[] }): Promise<Record<string, unknown>> {
-    const params: unknown[] = options?.identityIds === undefined ? [] : [{ identities: options.identityIds }];
-    return requestT2(this.transport, "getidentitytrust", params);
+    return requestT2(this.transport, "getidentitytrust", [options?.identityIds ?? []]);
   }
 
   /** Set/clear wallet-local identity trust ratings (daemon JSON options). T2. */

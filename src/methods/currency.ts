@@ -409,9 +409,10 @@ export class CurrencyApi {
   }
 
   /** Fractional converters holding all given currencies as reserves. */
-  async getCurrencyConverters(currencies: string[]): Promise<CurrencyConverterEntry[]> {
+  async getCurrencyConverters(options: { currencies: string[] }): Promise<CurrencyConverterEntry[]> {
+    // The daemon takes each currency name as its own positional param.
     const result = expectArray(
-      await this.transport.request("getcurrencyconverters", currencies),
+      await this.transport.request("getcurrencyconverters", options.currencies),
       "getcurrencyconverters",
     );
     return result.map((item, i) => mapCurrencyConverterEntry(item, i));

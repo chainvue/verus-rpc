@@ -56,6 +56,20 @@ describe.skipIf(PUBLIC_URL === undefined || PUBLIC_URL === "")(
       expect(Array.isArray(utxos)).toBe(true);
     });
 
+    it("createRawTransaction: bigint sats arrive at the daemon as coins (round-trip via decode)", async () => {
+      // Regression for the sats-vs-coins unit bug: build an unsigned tx
+      // (pure function, no wallet) and decode it back — the daemon must see
+      // 12_345_678 sats as 0.12345678 coins, and the single-object outputs
+      // shape must be accepted (the array form errors).
+      const hex = await client.blockchain.createRawTransaction({
+        outputs: { RCG8KwJNDVwpUBcdoa6AoHqHVJsA1uMYMR: 12_345_678n },
+      });
+      const decoded = await client.blockchain.decodeRawTransaction({ hex });
+      const vout = decoded["vout"] as { value: unknown }[];
+      expect(vout).toHaveLength(1);
+      expect(vout[0]!.value).toBe("0.12345678");
+    });
+
     it("rejects wallet-scoped methods (whitelist, documented behavior)", async () => {
       // Public gateways whitelist the light-client set only; wallet methods
       // answer with a JSON-RPC error, NOT a transport failure.

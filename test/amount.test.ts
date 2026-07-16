@@ -53,6 +53,11 @@ describe("parseAmount", () => {
     expect(parseAmount("1.2300000000")).toBe(123_000_000n);
   });
 
+  it("rejects out-of-range exponents cheaply (no giant allocation)", () => {
+    expect(() => parseAmount("1e999999999")).toThrow(/exponent out of range/);
+    expect(() => parseAmount("1e-999999999")).toThrow(/exponent out of range/);
+  });
+
   it("rejects malformed input", () => {
     for (const bad of ["", "abc", "1.", ".5", "1,5", "NaN", "Infinity", "0x10", "1 "]) {
       expect(() => parseAmount(bad), bad).toThrow(RangeError);

@@ -8,7 +8,7 @@
 await client.currency.getCurrency({ currency: "Bridge.vETH" });
 await client.currency.getCurrencyState({ currency: "Bridge.vETH" });
 await client.currency.listCurrencies({ query: { systemType: "pbaas" } });
-await client.currency.getCurrencyConverters(["VRSC", "DAI.vETH"]);
+await client.currency.getCurrencyConverters({ currencies: ["VRSC", "DAI.vETH"] });
 ```
 
 Every 8-decimal value — supply, reserves, fees, conversion prices, **and**

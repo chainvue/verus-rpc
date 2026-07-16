@@ -37,6 +37,11 @@ export function parseAmount(value: string, options?: ParseAmountOptions): bigint
   }
   const [, sign = "", intPart = "", fracPart = "", expPart] = match;
   const exponent = expPart === undefined ? 0 : Number(expPart);
+  // Boundary guard: a huge exponent would otherwise allocate a digit string
+  // of that length below ("1e999999999" → ~1GB). No real amount gets close.
+  if (Math.abs(exponent) > 1_000) {
+    throw new RangeError(`exponent out of range: ${value}`);
+  }
 
   // Shift the decimal point right by (AMOUNT_DECIMALS + exponent) places.
   const digits = intPart + fracPart;

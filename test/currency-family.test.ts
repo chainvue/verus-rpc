@@ -64,7 +64,7 @@ describe("getCurrencyConverters", () => {
         '"iBridge":{"version":1,"name":"Bridge","currencyid":"iBridge","systemid":"iSys","initialsupply":100.0},' +
         '"lastnotarization":{"proofroots":[]}}]',
     );
-    const [entry] = await currency.getCurrencyConverters(["VRSC", "DAI.vETH"]);
+    const [entry] = await currency.getCurrencyConverters({ currencies: ["VRSC", "DAI.vETH"] });
     expect(entry!.fullyqualifiedname).toBe("Bridge.vETH");
     const def = entry!["iBridge"] as { initialsupply: bigint };
     expect(def.initialsupply).toBe(10_000_000_000n); // mapped as T1 definition, not passthrough

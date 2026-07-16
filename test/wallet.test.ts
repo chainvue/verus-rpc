@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OperationFailedError, OperationTimeoutError, VerusRpcError } from "../src/errors.js";
+import { OperationFailedError, OperationTimeoutError, TransportError, VerusRpcError } from "../src/errors.js";
 import { isLosslessNumber } from "../src/lossless.js";
 import { WalletApi } from "../src/methods/wallet.js";
 import { MockTransport } from "../src/mock.js";
@@ -165,5 +165,29 @@ describe("sendCurrencyAndWait", () => {
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(OperationTimeoutError);
     expect((err as OperationTimeoutError).opid).toBe("opid-1");
+    expect((err as OperationTimeoutError).timeoutMs).toBe(25);
+  });
+
+  it("keeps polling through transient transport failures (the send is in flight)", async () => {
+    const { mock, wallet } = setup();
+    mock.respond("sendcurrency", "opid-1");
+    mock.failTransport("z_getoperationstatus", "network");
+    mock.respondJson("z_getoperationstatus", '[{"id":"opid-1","status":"success","result":{"txid":"deadbeef"}}]');
+
+    await expect(wallet.sendCurrencyAndWait(sendOptions)).resolves.toEqual({ opid: "opid-1", txid: "deadbeef" });
+    expect(mock.calls.filter((c) => c.method === "z_getoperationstatus")).toHaveLength(2);
+  });
+
+  it("attaches the last poll failure as cause when the deadline passes without an answer", async () => {
+    const { mock, wallet } = setup();
+    mock.respond("sendcurrency", "opid-1");
+    // No z_getoperationstatus responses queued: every poll yields the mock's
+    // TransportError, which the loop must tolerate until the deadline.
+    const err = await wallet
+      .sendCurrencyAndWait({ ...sendOptions, pollIntervalMs: 5, waitTimeoutMs: 20 })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OperationTimeoutError);
+    expect((err as OperationTimeoutError).opid).toBe("opid-1");
+    expect((err as OperationTimeoutError).cause).toBeInstanceOf(TransportError);
   });
 });

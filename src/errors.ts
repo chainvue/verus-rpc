@@ -7,15 +7,19 @@
  *   could trip it and deny service (v402 lesson).
  * - `TransportError` — the node could not be reached, did not answer in time,
  *   answered with an unparseable body, or the breaker is open.
+ *
+ * `TransportError` reason `"auth"` (HTTP 401/403 — bad or missing
+ * rpcuser/rpcpassword) is a client configuration problem, not node health:
+ * it never counts toward the circuit breaker.
  */
 
-export type TransportFailureReason = "network" | "timeout" | "bad-response" | "circuit-open";
+export type TransportFailureReason = "network" | "timeout" | "auth" | "bad-response" | "circuit-open";
 
 export class TransportError extends Error {
   readonly reason: TransportFailureReason;
 
-  constructor(reason: TransportFailureReason, message: string) {
-    super(message);
+  constructor(reason: TransportFailureReason, message: string, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = "TransportError";
     this.reason = reason;
   }
@@ -109,13 +113,20 @@ export class OperationFailedError extends Error {
   }
 }
 
-/** An async wallet operation (opid) did not reach a final state within the polling deadline. */
+/**
+ * An async wallet operation (opid) did not reach a final state within the
+ * polling deadline. If polling itself was failing at the deadline, the last
+ * `TransportError` is attached as `cause`. The operation may still complete
+ * on the daemon — check the opid before retrying the send.
+ */
 export class OperationTimeoutError extends Error {
   readonly opid: string;
+  readonly timeoutMs: number;
 
-  constructor(opid: string, timeoutMs: number) {
-    super(`operation ${opid} still pending after ${timeoutMs}ms`);
+  constructor(opid: string, timeoutMs: number, options?: { cause?: unknown }) {
+    super(`operation ${opid} still pending after ${timeoutMs}ms`, options);
     this.name = "OperationTimeoutError";
     this.opid = opid;
+    this.timeoutMs = timeoutMs;
   }
 }
