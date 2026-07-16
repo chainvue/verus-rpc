@@ -221,13 +221,17 @@ describe.skipIf(!(cfg.hasUrl && cfg.allowSpend))("live write harness (VRSCTEST, 
           offer: {
             changeaddress: change,
             expiryheight: info.blocks + 200,
-            // Offer a small (above-dust) amount of VRSCTEST, ask for dust of a
-            // token the wallet knows. The offered amount must exceed the network
-            // fee by more than the dust threshold — closeoffers reclaims
-            // (offered − fee) with no extra inputs, so an exactly-dust offer
-            // (0.0001) yields a dust reclaim output the daemon rejects, leaking
-            // the offer. The "for" ask needs only a valid destination address.
-            offer: { currency: "VRSCTEST", amount: new LosslessNumber("0.001") },
+            // Offer a small amount of VRSCTEST, ask for dust of a token the
+            // wallet knows. The offered amount must exceed DEFAULT_TRANSACTION_FEE
+            // (0.0001) by more than the dust threshold: closeoffers reclaims
+            // (offered − 0.0001) with no extra inputs, and a dust reclaim is
+            // rejected (-26). Worse, the daemon closes EXPIRED offers first and
+            // aborts the whole call on the first rejection — one leaked
+            // dust offer permanently poisons every closeoffers on the wallet
+            // until it is closed to a SAPLING address (z-outputs have no dust
+            // rule). 0.01 keeps a wide margin so offers never enter that state.
+            // The "for" ask needs only a valid destination address.
+            offer: { currency: "VRSCTEST", amount: new LosslessNumber("0.01") },
             for: { address: receive, currency: "ownora", amount: new LosslessNumber("0.0001") },
           },
         });
