@@ -19,6 +19,19 @@ describe("withResilience", () => {
     expect(mock.calls).toHaveLength(3);
   });
 
+  it("never counts auth failures toward the breaker (client misconfig, node healthy)", async () => {
+    const mock = new MockTransport();
+    for (let i = 0; i < 10; i++) mock.failTransport("getinfo", "auth", "HTTP 401");
+    mock.respond("getinfo", "ok");
+    const transport = withResilience(mock, { breaker: { failuresBeforeOpen: 3, recoveryMs: 60_000 } });
+
+    for (let i = 0; i < 10; i++) {
+      await expect(transport.request("getinfo", [])).rejects.toThrow(TransportError);
+    }
+    // Still closed — the 11th call goes through.
+    await expect(transport.request("getinfo", [])).resolves.toBe("ok");
+  });
+
   it("never counts daemon app errors toward the breaker", async () => {
     const mock = new MockTransport();
     for (let i = 0; i < 10; i++) mock.respondError("sendcurrency", -6, "Insufficient funds");
@@ -39,5 +52,24 @@ describe("withResilience", () => {
     const err = await transport.request("getinfo", []).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(TransportError);
     expect((err as TransportError).reason).toBe("timeout");
+  });
+
+  it("aborts the in-flight request when the policy timeout fires (no orphaned send)", async () => {
+    let sawAbort = false;
+    const hanging = {
+      request: (_method: string, _params: unknown[], signal?: AbortSignal) =>
+        new Promise<unknown>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => {
+            sawAbort = true;
+            reject(new TransportError("timeout", "aborted"));
+          });
+        }),
+    };
+    const transport = withResilience(hanging, { timeoutMs: 20 });
+
+    const err = await transport.request("sendcurrency", []).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("timeout");
+    expect(sawAbort).toBe(true);
   });
 });

@@ -11,8 +11,12 @@ export interface RpcTransport {
    * Send one JSON-RPC call. Returns the `result` subtree with number
    * literals preserved as `LosslessNumber`. Throws `VerusRpcError` when the
    * daemon answers with an error body, `TransportError` otherwise.
+   *
+   * `signal` (optional) aborts the in-flight HTTP request — the resilience
+   * policy passes its timeout signal here so a policy timeout does not leave
+   * the request running against the daemon.
    */
-  request(method: string, params: unknown[]): Promise<unknown>;
+  request(method: string, params: unknown[], signal?: AbortSignal): Promise<unknown>;
 }
 
 export interface DaemonTransportConfig {
@@ -78,7 +82,8 @@ export class DaemonTransport implements RpcTransport {
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
-  async request(method: string, params: unknown[]): Promise<unknown> {
+  async request(method: string, params: unknown[], signal?: AbortSignal): Promise<unknown> {
+    const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
     let response: Response;
     try {
       response = await this.fetchImpl(this.url, {
@@ -88,30 +93,47 @@ export class DaemonTransport implements RpcTransport {
           ...(this.authorization !== undefined ? { authorization: this.authorization } : {}),
         },
         body: stringifyLossless({ jsonrpc: "1.0", id: "verus-rpc", method, params }),
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: signal === undefined ? timeoutSignal : AbortSignal.any([timeoutSignal, signal]),
       });
     } catch (err) {
+      // A caller/policy abort surfaces with the caller's reason (not
+      // necessarily a DOMException) — classify by the signal, not the error.
+      if (signal?.aborted === true) {
+        throw new TransportError("timeout", `${method}: request aborted before a response`);
+      }
       if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
         throw new TransportError("timeout", `${method}: no response within ${this.timeoutMs}ms`);
       }
-      throw new TransportError("network", `${method}: ${err instanceof Error ? err.message : String(err)}`);
+      throw new TransportError("network", `${method}: ${err instanceof Error ? err.message : String(err)}`, {
+        cause: err,
+      });
     }
+
+    // 401/403 is a credentials problem, whatever the body looks like.
+    const authFailure = response.status === 401 || response.status === 403;
+    const reason = authFailure ? "auth" : "bad-response";
+    const authHint = authFailure ? " (check rpcuser/rpcpassword)" : "";
 
     const text = await response.text();
     let body: unknown;
     try {
       body = parseLossless(text);
     } catch {
-      throw new TransportError("bad-response", `${method}: HTTP ${response.status}, non-JSON body`);
+      throw new TransportError(reason, `${method}: HTTP ${response.status}, non-JSON body${authHint}`);
     }
     if (body === null || typeof body !== "object" || Array.isArray(body)) {
-      throw new TransportError("bad-response", `${method}: HTTP ${response.status}, non-object body`);
+      throw new TransportError(reason, `${method}: HTTP ${response.status}, non-object body${authHint}`);
     }
 
     const { result, error } = body as { result?: unknown; error?: unknown };
     if (error !== undefined && error !== null) {
       const { code, message } = extractRpcError(error);
       throw new VerusRpcError(method, code, message);
+    }
+    if (!response.ok) {
+      // Non-2xx without a JSON-RPC error body (proxy/gateway page, 401 with a
+      // JSON body, …) — never trust a `result` delivered on an error status.
+      throw new TransportError(reason, `${method}: HTTP ${response.status} without a JSON-RPC error body${authHint}`);
     }
     return result;
   }

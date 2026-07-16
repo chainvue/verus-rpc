@@ -1,11 +1,11 @@
-import { TransportError, VerusRpcError } from "./errors.js";
+import { TransportError, VerusRpcError, type TransportFailureReason } from "./errors.js";
 import { parseLossless, stringifyLossless } from "./lossless.js";
 import type { RpcTransport } from "./transport.js";
 
 type MockOutcome =
   | { kind: "result"; json: string }
   | { kind: "rpc-error"; code: number; message: string }
-  | { kind: "transport-error"; reason: "network" | "timeout" | "bad-response" | "circuit-open"; message: string };
+  | { kind: "transport-error"; reason: TransportFailureReason; message: string };
 
 /**
  * In-memory transport for unit tests (exported for consumers too, e.g.
@@ -43,7 +43,7 @@ export class MockTransport implements RpcTransport {
   /** Queue a transport failure. */
   failTransport(
     method: string,
-    reason: "network" | "timeout" | "bad-response" | "circuit-open" = "network",
+    reason: TransportFailureReason = "network",
     message = "mocked transport failure",
   ): this {
     return this.push(method, { kind: "transport-error", reason, message });

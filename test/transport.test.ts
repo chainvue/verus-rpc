@@ -95,6 +95,54 @@ describe("DaemonTransport", () => {
     expect((err as TransportError).reason).toBe("timeout");
   });
 
+  it("aborts the in-flight fetch when a caller signal fires", async () => {
+    const fetchImpl: typeof fetch = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason as Error));
+      });
+    const transport = transportWith(fetchImpl, 60_000);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new Error("caller cancelled")), 10);
+
+    const err = await transport.request("sendcurrency", [], controller.signal).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("timeout");
+    expect((err as TransportError).message).toContain("aborted");
+  });
+
+  it("preserves the underlying fetch error as cause on network failures", async () => {
+    const boom = new Error("ECONNREFUSED 127.0.0.1:27486");
+    const fetchImpl: typeof fetch = () => Promise.reject(boom);
+    const transport = transportWith(fetchImpl);
+
+    const err = await transport.request("getinfo", []).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("network");
+    expect((err as TransportError).cause).toBe(boom);
+  });
+
+  it("classifies HTTP 401 as an auth failure (bad rpcuser/rpcpassword)", async () => {
+    const { fetchImpl } = fetchReturning(401, "");
+    const transport = transportWith(fetchImpl);
+
+    const err = await transport.request("getinfo", []).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("auth");
+    expect((err as TransportError).message).toContain("rpcuser");
+  });
+
+  it("rejects a non-2xx response without a JSON-RPC error body (proxy 502)", async () => {
+    // A gateway answering JSON that is NOT a JSON-RPC error envelope must be
+    // a transport failure, not an undefined result for the mapper to trip on.
+    const { fetchImpl } = fetchReturning(502, '{"message":"bad gateway"}');
+    const transport = transportWith(fetchImpl);
+
+    const err = await transport.request("getinfo", []).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("bad-response");
+    expect((err as TransportError).message).toContain("HTTP 502");
+  });
+
   it("rejects an empty url at construction", () => {
     expect(() => new DaemonTransport({ url: "", user: "u", pass: "p" })).toThrow(TypeError);
   });

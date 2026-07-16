@@ -18,6 +18,26 @@ describe("VerusClient", () => {
     );
   });
 
+  it("rejects transport combined with default-transport options (nothing silently ignored)", () => {
+    const transport = new MockTransport();
+    expect(() => new VerusClient({ transport, url: "http://127.0.0.1:27486" })).toThrow(/injected/);
+    expect(() => new VerusClient({ transport, user: "u", pass: "p" })).toThrow(/injected/);
+    expect(() => new VerusClient({ transport, timeoutMs: 5_000 })).toThrow(/injected/);
+  });
+
+  it("applies resilience over an injected transport", async () => {
+    const mock = new MockTransport();
+    for (let i = 0; i < 3; i++) mock.failTransport("getinfo", "network");
+    const client = new VerusClient({ transport: mock, resilience: { breaker: { failuresBeforeOpen: 3 } } });
+
+    for (let i = 0; i < 3; i++) {
+      await expect(client.call("getinfo")).rejects.toThrow();
+    }
+    // Circuit open: the 4th call never reaches the mock.
+    await expect(client.call("getinfo")).rejects.toThrow(/circuit/);
+    expect(mock.calls).toHaveLength(3);
+  });
+
   it("call() defaults to lossless numbers — no float64 for amounts", async () => {
     const mock = new MockTransport().respondJson("getcurrencybalance", '{"VRSCTEST":2.00000000,"height":100}');
     const client = new VerusClient({ transport: mock });

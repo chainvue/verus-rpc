@@ -31,7 +31,9 @@ export interface ResilienceConfig {
 const DEFAULTS = { timeoutMs: 10_000, failuresBeforeOpen: 5, recoveryMs: 30_000 };
 
 function isTransportFailure(err: unknown): boolean {
-  return err instanceof TransportError || err instanceof TaskCancelledError;
+  // "auth" (HTTP 401/403) is a client configuration problem — the node is
+  // healthy, so it must not open the circuit.
+  return (err instanceof TransportError && err.reason !== "auth") || err instanceof TaskCancelledError;
 }
 
 /** Wrap a transport with timeout + circuit breaker per `config`. */
@@ -47,9 +49,15 @@ export function withResilience(transport: RpcTransport, config: ResilienceConfig
   );
 
   return {
-    async request(method: string, params: unknown[]): Promise<unknown> {
+    async request(method: string, params: unknown[], signal?: AbortSignal): Promise<unknown> {
       try {
-        return await policy.execute(() => transport.request(method, params));
+        // The policy's signal aborts the in-flight HTTP request on policy
+        // timeout — without it, a timed-out call keeps running against the
+        // daemon (duplicate-send hazard if the caller retries).
+        return await policy.execute(
+          ({ signal: policySignal }) => transport.request(method, params, policySignal),
+          signal,
+        );
       } catch (err) {
         if (err instanceof BrokenCircuitError) {
           throw new TransportError("circuit-open", `${method}: circuit breaker is open`);

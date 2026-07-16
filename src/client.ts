@@ -28,9 +28,17 @@ export interface VerusClientConfig {
   fetchImpl?: typeof fetch;
   /** Plain per-request timeout (ms) of the default transport. Default 60s. */
   timeoutMs?: number;
-  /** Opt-in circuit breaker + policy timeout. Off by default. */
+  /**
+   * Opt-in circuit breaker + policy timeout. Off by default. Also applies
+   * when combined with a custom `transport` (the transport gets wrapped).
+   */
   resilience?: ResilienceConfig;
-  /** Full transport override (tests, future GatewayTransport). */
+  /**
+   * Full transport override (tests, future GatewayTransport). Mutually
+   * exclusive with the default-transport options (`url`, `user`, `pass`,
+   * `fetchImpl`, `timeoutMs`) — combining them throws instead of silently
+   * ignoring what you passed.
+   */
   transport?: RpcTransport;
 }
 
@@ -47,6 +55,8 @@ export type CallNumbersMode = "lossless" | "js";
 
 export interface CallOptions {
   numbers?: CallNumbersMode;
+  /** Aborts the in-flight HTTP request (surfaces as a timeout `TransportError`). */
+  signal?: AbortSignal;
 }
 
 /**
@@ -69,7 +79,19 @@ export class VerusClient {
 
   constructor(config: VerusClientConfig) {
     if (config.transport !== undefined) {
-      this.transport = config.transport;
+      if (
+        config.url !== undefined ||
+        config.user !== undefined ||
+        config.pass !== undefined ||
+        config.fetchImpl !== undefined ||
+        config.timeoutMs !== undefined
+      ) {
+        throw new TypeError(
+          "VerusClient: url/user/pass/fetchImpl/timeoutMs configure the default transport and are ignored when a transport is injected — pass one or the other",
+        );
+      }
+      this.transport =
+        config.resilience !== undefined ? withResilience(config.transport, config.resilience) : config.transport;
     } else {
       if (config.url === undefined) {
         throw new TypeError("VerusClient: url is required (or pass a transport)");
@@ -100,7 +122,7 @@ export class VerusClient {
    * Untyped by design — see `CallNumbersMode` for how numbers arrive.
    */
   async call(method: string, params: unknown[] = [], options?: CallOptions): Promise<unknown> {
-    const raw = await this.transport.request(method, params);
+    const raw = await this.transport.request(method, params, options?.signal);
     return options?.numbers === "js" ? toJsNumbers(raw) : toSafeNumbers(raw);
   }
 }
