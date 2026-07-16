@@ -38,10 +38,13 @@ export {
   type AddressDelta,
   type AddressRangeOptions,
   type AddressUtxo,
+  type SpentInfo,
 } from "./methods/addressindex.js";
 export {
   BlockchainApi,
+  mapCoinSupply,
   mapGetVdxfId,
+  type CoinSupplyResult,
   type CreateRawTransactionInput,
   type GetVdxfIdResult,
   type RawTransactionOptions,
@@ -49,6 +52,7 @@ export {
 export {
   ShieldedApi,
   type WaitForOperationOptions,
+  type ZRescanOption,
   type ZReceivedEntry,
   type ZSendManyEntry,
   type ZSendManyOptions,

@@ -6,6 +6,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { parseAmount } from "../src/amount.js";
+import { RpcErrorCode, VerusRpcError } from "../src/errors.js";
+import { AddressIndexApi } from "../src/methods/addressindex.js";
 import { BlockchainApi } from "../src/methods/blockchain.js";
 import { CurrencyApi } from "../src/methods/currency.js";
 import { ShieldedApi } from "../src/methods/shielded.js";
@@ -205,5 +207,149 @@ describe("CurrencyApi — cross-chain reads", () => {
     const mock = new MockTransport().respondJson("getpendingtransfers", "[]");
     await new CurrencyApi(mock).getPendingTransfers({ chainName: "VRSCTEST" });
     expect(mock.calls[0]!.params).toEqual(["VRSCTEST"]);
+  });
+});
+
+// --- Etappe-5 expansion: supply/chain-verify, spent index, currency trust,
+// --- shielded validation + viewing-key / wallet dump family.
+
+describe("BlockchainApi — coinSupply / verifyChain", () => {
+  it("coinSupply maps all pools to bigint sats and defaults to the tip", async () => {
+    const mock = new MockTransport().respondJson(
+      "coinsupply",
+      '{"result":"success","coin":"VRSCTEST","height":1149718,' +
+        '"supply":68164246.66084664,"immature":126.00000000,"zfunds":707.03362640,"total":68164953.69447304}',
+    );
+    const res = await new BlockchainApi(mock).coinSupply();
+    expect(mock.calls[0]!.params).toEqual([]);
+    expect(res.coin).toBe("VRSCTEST");
+    expect(res.height).toBe(1149718);
+    expect(res.supply).toBe(6816424666084664n);
+    expect(res.immature).toBe(12600000000n);
+    expect(res.zfunds).toBe(70703362640n);
+    expect(res.total).toBe(6816495369447304n);
+  });
+
+  it("coinSupply sends the height as a STRING (daemon reads it via uni_get_str)", async () => {
+    const mock = new MockTransport().respondJson(
+      "coinsupply",
+      '{"result":"success","coin":"VRSCTEST","height":420,"supply":1.0,"immature":0,"zfunds":0,"total":1.0}',
+    );
+    await new BlockchainApi(mock).coinSupply({ height: 420 });
+    expect(mock.calls[0]!.params).toEqual(["420"]);
+  });
+
+  it("coinSupply surfaces the daemon's in-band error as VerusRpcError with RPC_NO_CODE", async () => {
+    const mock = new MockTransport().respondJson("coinsupply", '{"error":"invalid height"}');
+    const err = await new BlockchainApi(mock).coinSupply({ height: 999_999_999 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(VerusRpcError);
+    expect((err as VerusRpcError).code).toBe(RpcErrorCode.RPC_NO_CODE);
+    expect((err as VerusRpcError).message).toContain("invalid height");
+  });
+
+  it("coinSupply refuses heights the daemon's atoi would silently mangle", async () => {
+    const mock = new MockTransport();
+    const bc = new BlockchainApi(mock);
+    await expect(bc.coinSupply({ height: 1e21 })).rejects.toThrow(RangeError);
+    await expect(bc.coinSupply({ height: 420.7 })).rejects.toThrow(RangeError);
+    await expect(bc.coinSupply({ height: -1 })).rejects.toThrow(RangeError);
+    expect(mock.calls).toHaveLength(0);
+  });
+
+  it("verifyChain gap-fills checkLevel with the daemon default when only numBlocks is given", async () => {
+    const mock = new MockTransport().respondJson("verifychain", "true").respondJson("verifychain", "true");
+    const bc = new BlockchainApi(mock);
+    await expect(bc.verifyChain()).resolves.toBe(true);
+    expect(mock.calls[0]!.params).toEqual([]);
+    await bc.verifyChain({ numBlocks: 100 });
+    expect(mock.calls[1]!.params).toEqual([3, 100]);
+  });
+});
+
+describe("AddressIndexApi — getSpentInfo", () => {
+  it("sends the object param and maps the spend location", async () => {
+    const mock = new MockTransport().respondJson(
+      "getspentinfo",
+      '{"txid":"beef","index":2,"height":777,"extra":"kept"}',
+    );
+    const res = await new AddressIndexApi(mock).getSpentInfo({ txid: "abcd", index: 0 });
+    expect(mock.calls[0]!.params).toEqual([{ txid: "abcd", index: 0 }]);
+    expect(res).toMatchObject({ txid: "beef", index: 2, height: 777, extra: "kept" });
+  });
+});
+
+describe("CurrencyApi — currency trust", () => {
+  it("getCurrencyTrust always sends the mandatory array param", async () => {
+    const mock = new MockTransport()
+      .respondJson("getcurrencytrust", '{"setratings":{},"currencytrustmode":0}')
+      .respondJson("getcurrencytrust", '{"setratings":{},"currencytrustmode":1}');
+    const c = new CurrencyApi(mock);
+    await c.getCurrencyTrust();
+    expect(mock.calls[0]!.params).toEqual([[]]);
+    await c.getCurrencyTrust({ currencyIds: ["iCurrency"] });
+    expect(mock.calls[1]!.params).toEqual([["iCurrency"]]);
+  });
+
+  it("getCurrencyTrust passes through the null that v1.2.x daemons actually send", async () => {
+    const mock = new MockTransport().respondJson("getcurrencytrust", "null");
+    await expect(new CurrencyApi(mock).getCurrencyTrust()).resolves.toBeNull();
+  });
+
+  it("setCurrencyTrust passes the options object through", async () => {
+    const mock = new MockTransport().respondJson("setcurrencytrust", "null");
+    await expect(
+      new CurrencyApi(mock).setCurrencyTrust({ currencytrustmode: 1, removeratings: ["iBad"] }),
+    ).resolves.toBeUndefined();
+    expect(mock.calls[0]!.params).toEqual([{ currencytrustmode: 1, removeratings: ["iBad"] }]);
+  });
+});
+
+describe("ShieldedApi — validation + viewing-key/wallet dump family", () => {
+  it("zValidateAddress forwards the address", async () => {
+    const mock = new MockTransport().respondJson(
+      "z_validateaddress",
+      '{"isvalid":true,"address":"zs1abc","type":"sapling","ismine":false}',
+    );
+    const res = await new ShieldedApi(mock).zValidateAddress({ address: "zs1abc" });
+    expect(mock.calls[0]!.params).toEqual(["zs1abc"]);
+    expect(res).toMatchObject({ isvalid: true, type: "sapling" });
+  });
+
+  it("zExportViewingKey returns the key string", async () => {
+    const mock = new MockTransport().respondJson("z_exportviewingkey", '"zxviews1mockviewingkey"');
+    await expect(new ShieldedApi(mock).zExportViewingKey({ zaddr: "zs1abc" })).resolves.toBe(
+      "zxviews1mockviewingkey",
+    );
+    expect(mock.calls[0]!.params).toEqual(["zs1abc"]);
+  });
+
+  it("zImportViewingKey gap-fills rescan when startHeight is given and returns the address info", async () => {
+    const mock = new MockTransport()
+      .respondJson("z_importviewingkey", '{"type":"sapling","address":"zs1abc"}')
+      .respondJson("z_importviewingkey", '{"type":"sapling","address":"zs1abc"}');
+    const sh = new ShieldedApi(mock);
+    await expect(sh.zImportViewingKey({ viewingKey: "zxviews1mock" })).resolves.toMatchObject({
+      address: "zs1abc",
+    });
+    expect(mock.calls[0]!.params).toEqual(["zxviews1mock"]);
+    await sh.zImportViewingKey({ viewingKey: "zxviews1mock", startHeight: 100 });
+    expect(mock.calls[1]!.params).toEqual(["zxviews1mock", "whenkeyisnew", 100]);
+  });
+
+  it("zExportWallet forwards filename (+ optional omitEmptyTAddresses) and returns the node-side path", async () => {
+    const mock = new MockTransport()
+      .respondJson("z_exportwallet", '"/export/dump1"')
+      .respondJson("z_exportwallet", '"/export/dump2"');
+    const sh = new ShieldedApi(mock);
+    await expect(sh.zExportWallet({ filename: "dump1" })).resolves.toBe("/export/dump1");
+    expect(mock.calls[0]!.params).toEqual(["dump1"]);
+    await sh.zExportWallet({ filename: "dump2", omitEmptyTAddresses: true });
+    expect(mock.calls[1]!.params).toEqual(["dump2", true]);
+  });
+
+  it("zImportWallet forwards the filename and resolves void", async () => {
+    const mock = new MockTransport().respondJson("z_importwallet", "null");
+    await expect(new ShieldedApi(mock).zImportWallet({ filename: "dump1" })).resolves.toBeUndefined();
+    expect(mock.calls[0]!.params).toEqual(["dump1"]);
   });
 });

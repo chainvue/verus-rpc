@@ -17,7 +17,7 @@ import {
   mapCurrencyState,
 } from "../src/methods/currency.js";
 import { mapAddressBalance } from "../src/methods/addressindex.js";
-import { mapGetVdxfId } from "../src/methods/blockchain.js";
+import { mapCoinSupply, mapGetVdxfId } from "../src/methods/blockchain.js";
 import { mapGetIdentity, mapIdentityDefinition, mapIdentityHistory, mapIdentityResult } from "../src/methods/identity.js";
 import {
   mapAddressGroupings,
@@ -221,6 +221,18 @@ describe("fixture conformance", () => {
     const result = mapGetVdxfId(fixtureResult("getvdxfid.json"));
     expect(result.hash160result).toBe("dcb11f97bce0c8734d92da7b0f5551acfbb629bb");
     expect(result.qualifiedname.name).toBe("vrsc::system.currency.export");
+  });
+
+  it("coinsupply (recorded VRSCTEST probe) — supply-scale amounts survive byte-exact", () => {
+    const result = mapCoinSupply(fixtureResult("coinsupply.json"));
+    expect(result.coin).toBe("VRSCTEST");
+    expect(result.height).toBe(1_000_000);
+    expect(result.supply).toBe(5_598_864_814_256_017n);
+    expect(result.immature).toBe(60_000_580_000n);
+    expect(result.zfunds).toBe(1_135_185_443_983n);
+    // Trailing-zero token on the wire ("55999999.99700000") — the exact
+    // >2^53-hazard magnitude docs/amounts.md warns about.
+    expect(result.total).toBe(5_599_999_999_700_000n);
   });
 
   it("daemon error body (recorded gateway rejection)", async () => {

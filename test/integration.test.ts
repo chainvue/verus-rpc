@@ -75,6 +75,22 @@ describe.skipIf(!cfg.hasUrl)("gated integration: real daemon (read-only)", () =>
       expect(await client.blockchain.getNetworkInfo()).toBeTypeOf("object");
       expect(await client.blockchain.getBlockSubsidy()).toBeTypeOf("object");
     });
+    it("coinSupply maps supply pools to bigint (low height — near-tip takes the daemon minutes)", async () => {
+      const supply = await client.blockchain.coinSupply({ height: 1_000 });
+      expect(supply.height).toBe(1_000);
+      expect(typeof supply.supply).toBe("bigint");
+      expect(supply.total).toBe(supply.supply + supply.zfunds);
+      await expect(client.blockchain.coinSupply({ height: 999_999_999 })).rejects.toThrow(/invalid height/);
+    });
+    it("getSpentInfo locates the spend of an early coinbase", async () => {
+      const hash = await client.blockchain.getBlockHash(100);
+      const blk = (await client.blockchain.getBlock({ hashOrHeight: hash, verbosity: 1 })) as {
+        tx: string[];
+      };
+      const spent = await client.addressIndex.getSpentInfo({ txid: blk.tx[0]!, index: 0 });
+      expect(spent.txid).toHaveLength(64);
+      expect(spent.height).toBeGreaterThan(100);
+    });
   });
 
   describe("wallet", () => {

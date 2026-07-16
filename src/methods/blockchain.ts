@@ -1,6 +1,7 @@
 import { amountParam } from "../amount.js";
+import { RpcErrorCode, VerusRpcError } from "../errors.js";
 import { isLosslessNumber } from "../lossless.js";
-import { expectObject, mapString, mapStringOptional, withPassthrough } from "../mapping.js";
+import { expectObject, mapAmount, mapBoolean, mapInt, mapString, mapStringOptional, withPassthrough } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
 import { requestT2 } from "./t2.js";
 
@@ -63,6 +64,46 @@ export function mapGetVdxfId(raw: unknown): GetVdxfIdResult {
       name: mapString(qn["name"], { method, field: "qualifiedname.name" }),
       namespace: mapStringOptional(qn["namespace"], { method, field: "qualifiedname.namespace" }),
     },
+  });
+}
+
+/** Result of `coinsupply` — all pool sizes as bigint sats. */
+export interface CoinSupplyResult {
+  /** Native coin symbol (e.g. "VRSC", "VRSCTEST"). */
+  coin: string;
+  height: number;
+  /** Transparent pool — bigint sats. */
+  supply: bigint;
+  /** Mined but not yet spendable — bigint sats. */
+  immature: bigint;
+  /** Shielded pool — bigint sats. */
+  zfunds: bigint;
+  /** supply + zfunds — bigint sats. */
+  total: bigint;
+  [key: string]: unknown;
+}
+
+export function mapCoinSupply(raw: unknown): CoinSupplyResult {
+  const method = "coinsupply";
+  const obj = expectObject(raw, method);
+  // The daemon reports failures in-band on a success envelope
+  // ({"error": "invalid height"}) — never as a JSON-RPC error body.
+  const inBandError = obj["error"];
+  if (inBandError !== undefined && inBandError !== null) {
+    throw new VerusRpcError(
+      method,
+      RpcErrorCode.RPC_NO_CODE,
+      typeof inBandError === "string" ? inBandError : JSON.stringify(inBandError),
+    );
+  }
+  const ctx = (field: string): { method: string; field: string } => ({ method, field });
+  return withPassthrough(obj, {
+    coin: mapString(obj["coin"], ctx("coin")),
+    height: mapInt(obj["height"], ctx("height")),
+    supply: mapAmount(obj["supply"], ctx("supply")),
+    immature: mapAmount(obj["immature"], ctx("immature")),
+    zfunds: mapAmount(obj["zfunds"], ctx("zfunds")),
+    total: mapAmount(obj["total"], ctx("total")),
   });
 }
 
@@ -282,5 +323,48 @@ export class BlockchainApi {
   /** Decode a hex script into its assembly + addresses. T2. */
   async decodeScript(options: { hex: string }): Promise<Record<string, unknown>> {
     return requestT2(this.transport, "decodescript", [options.hex]);
+  }
+
+  /**
+   * Coin supply at `height` (default: current tip). T1 — supply values are
+   * bigint sats; chain-total magnitudes are exactly where float64 loses
+   * satoshi precision. Daemon contract (source v1.2.17): the height is read
+   * with `uni_get_str`, so it goes on the wire as a string — a raw JSON
+   * number reads as "" → height 0 → the in-band "invalid height" error.
+   * Failures arrive in-band (`{"error": ...}` on a success envelope) and
+   * surface as `VerusRpcError` with code `RPC_NO_CODE`. Verified live:
+   * near-tip heights on a mature chain can take the daemon MINUTES to
+   * answer — pass a `timeoutMs` sized for that.
+   */
+  async coinSupply(options?: { height?: number }): Promise<CoinSupplyResult> {
+    const height = options?.height;
+    if (height !== undefined && (!Number.isSafeInteger(height) || height < 0)) {
+      // The daemon parses the string with atoi — "1e+21" would silently
+      // become height 1, "420.7" would truncate. Refuse instead.
+      throw new RangeError(`coinsupply: height must be a non-negative integer, got ${String(height)}`);
+    }
+    const params: unknown[] = height === undefined ? [] : [String(height)];
+    return mapCoinSupply(await this.transport.request("coinsupply", params));
+  }
+
+  /**
+   * Re-verify the local block database. Expensive — the daemon holds its
+   * main lock for the duration. `checkLevel` 0-4, `numBlocks` (0 = all);
+   * omitted entirely, the node uses its own `-checklevel`/`-checkblocks`
+   * (3/288 unless configured). Params are positional, so passing
+   * `numBlocks` without `checkLevel` sends the compiled-in default 3 —
+   * OVERRIDING a `-checklevel` the node was started with; pass both to be
+   * explicit. T1 boolean.
+   */
+  async verifyChain(options?: { checkLevel?: number; numBlocks?: number }): Promise<boolean> {
+    const params: unknown[] = [];
+    if (options?.checkLevel !== undefined || options?.numBlocks !== undefined) {
+      params.push(options?.checkLevel ?? 3);
+    }
+    if (options?.numBlocks !== undefined) params.push(options.numBlocks);
+    return mapBoolean(await this.transport.request("verifychain", params), {
+      method: "verifychain",
+      field: "(result)",
+    });
   }
 }

@@ -612,10 +612,14 @@ export class IdentityApi {
 
   /**
    * Trust ratings this wallet keeps for identities. T2. The daemon requires
-   * the id-array param — `[]` is sent when no filter is given. Note: current
-   * daemons (v1.2.x) return ALL ratings regardless of the filter.
+   * the id-array param — `[]` is sent when no filter is given. Daemon
+   * quirks, source- and live-verified on v1.2.x: the filter is never read
+   * (all ratings would be returned regardless), and the reply is always
+   * `null` — the handler builds its `{setratings, identitytrustmode}`
+   * result on an uninitialized (non-object) UniValue, so every pushKV is
+   * silently dropped. The declared shape is kept for daemons that fix this.
    */
-  async getIdentityTrust(options?: { identityIds?: string[] }): Promise<Record<string, unknown>> {
+  async getIdentityTrust(options?: { identityIds?: string[] }): Promise<Record<string, unknown> | null> {
     return requestT2(this.transport, "getidentitytrust", [options?.identityIds ?? []]);
   }
 
