@@ -1,0 +1,30 @@
+# Dependabot — keeps the SHA-pinned GitHub Actions fresh (release.yml relies
+# on this: actions are pinned to full commit SHAs and the `# vN` comments are
+# what Dependabot reads to bump them) and watches npm dependencies.
+#
+# Commit-message prefixes are chosen for semantic-release (angular preset):
+# - runtime deps    → fix(deps)       → patch release (adopters get the bump)
+# - dev deps        → chore(deps-dev) → no release
+# - GitHub Actions  → ci(deps)        → no release
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: fix
+      prefix-development: chore
+      include: scope
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types: ["minor", "patch"]
