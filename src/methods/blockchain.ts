@@ -1,6 +1,6 @@
-import { formatAmount } from "../amount.js";
-import { isLosslessNumber, LosslessNumber } from "../lossless.js";
-import { expectObject, mapInt, mapString, mapStringOptional, withPassthrough } from "../mapping.js";
+import { amountParam } from "../amount.js";
+import { isLosslessNumber } from "../lossless.js";
+import { expectObject, mapString, mapStringOptional, withPassthrough } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
 import { requestT2 } from "./t2.js";
 
@@ -42,7 +42,7 @@ export interface RawTransactionOptions {
  * amounts in coins, so a bare bigint would be off by 1e8.
  */
 function serializeOutputAmounts(tree: unknown): unknown {
-  if (typeof tree === "bigint") return new LosslessNumber(formatAmount(tree));
+  if (typeof tree === "bigint") return amountParam(tree);
   if (Array.isArray(tree)) return tree.map(serializeOutputAmounts);
   if (tree !== null && typeof tree === "object" && !isLosslessNumber(tree)) {
     const out: Record<string, unknown> = {};
@@ -96,13 +96,8 @@ export class BlockchainApi {
     return mapGetVdxfId(await this.transport.request("getvdxfid", params));
   }
 
-  /** Best-chain block count. */
-  async getBlockCount(): Promise<number> {
-    return mapInt(await this.transport.request("getblockcount", []), {
-      method: "getblockcount",
-      field: "(result)",
-    });
-  }
+  // getblockcount lives on ChainApi (client.chain.getBlockCount) — it was
+  // duplicated here until 0.5.0; one public entry point per RPC.
 
   /** Block hash at a height. */
   async getBlockHash(height: number): Promise<string> {

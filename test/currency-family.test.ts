@@ -30,6 +30,13 @@ describe("getCurrencyState", () => {
     expect(state.currencies!["iVRSC"]!.lastconversionprice).toBe(1_805_966_718n);
     expect(state.currencies!["iVRSC"]!.fees).toBe(130_030n);
   });
+
+  it("gap-fills a skipped height with null (0 would mean genesis, not tip)", async () => {
+    const { mock, currency } = setup();
+    mock.respondJson("getcurrencystate", `[{"height":100,"currencystate":${STATE}}]`);
+    await currency.getCurrencyState({ currency: "iBridge", conversionDataCurrency: "VRSCTEST" });
+    expect(mock.calls[0]!.params).toEqual(["iBridge", null, "VRSCTEST"]);
+  });
 });
 
 describe("getCurrency / listCurrencies", () => {

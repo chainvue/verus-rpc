@@ -7,7 +7,7 @@
 // decimal strings; `call()` is the always-available escape hatch that reaches
 // every daemon method — typed or not — so coverage never blocks you.
 
-export { formatAmount, parseAmount, SATS_PER_COIN, type ParseAmountOptions } from "./amount.js";
+export { amountParam, formatAmount, parseAmount, SATS_PER_COIN, type ParseAmountOptions } from "./amount.js";
 export {
   OperationFailedError,
   OperationTimeoutError,

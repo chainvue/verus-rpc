@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { formatAmount, parseAmount, SATS_PER_COIN } from "../src/amount.js";
+import { amountParam, formatAmount, parseAmount, SATS_PER_COIN } from "../src/amount.js";
+import { stringifyLossless } from "../src/lossless.js";
 
 describe("parseAmount", () => {
   it("parses the daemon's 8-decimal notation", () => {
@@ -51,6 +52,10 @@ describe("parseAmount", () => {
 
   it("accepts sub-satoshi digits when they are all zeros", () => {
     expect(parseAmount("1.2300000000")).toBe(123_000_000n);
+  });
+
+  it("amountParam serializes bigint sats as an exact 8-decimal number token", () => {
+    expect(stringifyLossless({ amount: amountParam(10_000_000n) })).toBe('{"amount":0.10000000}');
   });
 
   it("rejects out-of-range exponents cheaply (no giant allocation)", () => {
