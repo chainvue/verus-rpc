@@ -43,6 +43,22 @@ export interface VerusClientConfig {
 }
 
 /**
+ * The config keys that configure the built-in `DaemonTransport` and are
+ * therefore mutually exclusive with an injected `transport`. The `Record`
+ * shape makes the compiler enforce the list stays complete: adding a
+ * default-transport option to `VerusClientConfig` without listing it here
+ * (or excluding it below) is a type error.
+ */
+const IS_DEFAULT_TRANSPORT_OPTION: Record<Exclude<keyof VerusClientConfig, "transport" | "resilience">, true> = {
+  url: true,
+  user: true,
+  pass: true,
+  fetchImpl: true,
+  timeoutMs: true,
+};
+const DEFAULT_TRANSPORT_OPTION_KEYS = Object.keys(IS_DEFAULT_TRANSPORT_OPTION) as (keyof typeof IS_DEFAULT_TRANSPORT_OPTION)[];
+
+/**
  * How `call()` surfaces JSON numbers:
  *
  * - `"lossless"` (default): safe integers become `number`, everything else
@@ -83,15 +99,10 @@ export class VerusClient {
   constructor(config: VerusClientConfig) {
     let base: RpcTransport;
     if (config.transport !== undefined) {
-      if (
-        config.url !== undefined ||
-        config.user !== undefined ||
-        config.pass !== undefined ||
-        config.fetchImpl !== undefined ||
-        config.timeoutMs !== undefined
-      ) {
+      const conflicting = DEFAULT_TRANSPORT_OPTION_KEYS.filter((key) => config[key] !== undefined);
+      if (conflicting.length > 0) {
         throw new TypeError(
-          "VerusClient: url/user/pass/fetchImpl/timeoutMs configure the default transport and are ignored when a transport is injected — pass one or the other",
+          `VerusClient: default-transport option(s) ${conflicting.join(", ")} would be ignored when a transport is injected — pass one or the other`,
         );
       }
       base = config.transport;

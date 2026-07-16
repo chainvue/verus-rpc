@@ -155,6 +155,17 @@ describe("sendCurrencyAndWait", () => {
     expect((err as OperationFailedError).message).toContain("Insufficient funds");
   });
 
+  it("throws OperationFailedError on success without a txid (same contract as zSendManyAndWait)", async () => {
+    const { mock, wallet } = setup();
+    mock.respond("sendcurrency", "opid-1");
+    mock.respondJson("z_getoperationstatus", '[{"id":"opid-1","status":"success","result":{}}]');
+
+    const err = await wallet.sendCurrencyAndWait(sendOptions).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OperationFailedError);
+    expect((err as OperationFailedError).opid).toBe("opid-1");
+    expect((err as OperationFailedError).message).toContain("success without txid");
+  });
+
   it("throws OperationTimeoutError when the deadline passes", async () => {
     const { mock, wallet } = setup();
     mock.respond("sendcurrency", "opid-1");

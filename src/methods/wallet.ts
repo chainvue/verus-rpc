@@ -1,5 +1,5 @@
 import { amountParam } from "../amount.js";
-import { ResponseMappingError } from "../errors.js";
+import { OperationFailedError } from "../errors.js";
 import { toSafeNumbers } from "../lossless.js";
 import {
   expectArray,
@@ -399,7 +399,7 @@ export class WalletApi {
     );
     const txid = status.result?.txid;
     if (typeof txid !== "string") {
-      throw new ResponseMappingError("z_getoperationstatus", "result.txid", "success without txid");
+      throw new OperationFailedError(opid, status.status, undefined, "success without txid");
     }
     return { opid, txid };
   }
