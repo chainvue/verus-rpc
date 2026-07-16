@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.6.0](https://github.com/chainvue/verus-rpc/compare/v0.5.1...v0.6.0) (2026-07-16)
+
+
+### Bug Fixes
+
+* **review:** daemon-truth corrections, RPC_NO_CODE taxonomy, live + fixture coverage ([e2c45cd](https://github.com/chainvue/verus-rpc/commit/e2c45cd7b5f305291b6842df627a9e34c89d1728))
+* **transport:** self-teardown on abort, unref'd timer, honest leak rationale ([1b06496](https://github.com/chainvue/verus-rpc/commit/1b06496f7ec8fa514dadae1f477e6e566cf113d9))
+* **transport:** tear down per-request abort wiring when the request settles ([7d313db](https://github.com/chainvue/verus-rpc/commit/7d313dbfa89b5fb4ab38d4e3d23ba22dbf13aad1))
+
+
+### Features
+
+* expand typed coverage +10 methods (supply, spent index, currency trust, shielded keys) ([57e3537](https://github.com/chainvue/verus-rpc/commit/57e35373f3232eb6ce7d91502b7b40502a991abf))
+
 ## [0.5.1](https://github.com/chainvue/verus-rpc/compare/v0.5.0...v0.5.1) (2026-07-16)
 
 
