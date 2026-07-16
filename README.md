@@ -1,5 +1,10 @@
 # @chainvue/verus-rpc
 
+[![npm](https://img.shields.io/npm/v/%40chainvue%2Fverus-rpc)](https://www.npmjs.com/package/@chainvue/verus-rpc)
+[![CI](https://github.com/chainvue/verus-rpc/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chainvue/verus-rpc/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/%40chainvue%2Fverus-rpc)](./LICENSE)
+[![node](https://img.shields.io/node/v/%40chainvue%2Fverus-rpc)](https://nodejs.org)
+
 A typed TypeScript client for the Verus daemon (`verusd`) JSON-RPC interface,
 with **amounts you can trust** (`bigint` satoshis, never a float). Every daemon
 RPC method is reachable via `call()`; the common surface — wallet, identity,
