@@ -1,6 +1,6 @@
-import { formatAmount } from "../amount.js";
+import { amountParam } from "../amount.js";
 import { OperationTimeoutError, RpcErrorCode, VerusRpcError } from "../errors.js";
-import { LosslessNumber, toSafeNumbers } from "../lossless.js";
+import { toSafeNumbers } from "../lossless.js";
 import {
   expectArray,
   expectObject,
@@ -13,6 +13,7 @@ import {
   withPassthrough,
 } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
+import { sleep } from "./operations.js";
 import { requestT2 } from "./t2.js";
 import { mapGetTransaction } from "./wallet.js";
 
@@ -345,14 +346,6 @@ export function mapNameCommitment(raw: unknown): NameCommitmentResult {
   });
 }
 
-function feeParam(sats: bigint): LosslessNumber {
-  return new LosslessNumber(formatAmount(sats));
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /** VerusID family — reads, lifecycle, and the guided registration flow. */
 export class IdentityApi {
   constructor(private readonly transport: RpcTransport) {}
@@ -454,7 +447,7 @@ export class IdentityApi {
     const params: unknown[] = [first];
     const opts: unknown[] = [
       options.returnTx,
-      options.feeOffer === undefined ? undefined : feeParam(options.feeOffer),
+      options.feeOffer === undefined ? undefined : amountParam(options.feeOffer),
       options.sourceOfFunds,
     ];
     const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
@@ -492,7 +485,7 @@ export class IdentityApi {
     const params: unknown[] = [options.nameOrId, lockSpec];
     const opts: unknown[] = [
       options.returnTx,
-      options.feeOffer === undefined ? undefined : feeParam(options.feeOffer),
+      options.feeOffer === undefined ? undefined : amountParam(options.feeOffer),
       options.sourceOfFunds,
     ];
     const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
@@ -512,7 +505,7 @@ export class IdentityApi {
     sourceOfFunds: string | undefined,
   ): Promise<string> {
     const params: unknown[] = [first];
-    const opts: unknown[] = [returnTx, tokenFlag, feeOffer === undefined ? undefined : feeParam(feeOffer), sourceOfFunds];
+    const opts: unknown[] = [returnTx, tokenFlag, feeOffer === undefined ? undefined : amountParam(feeOffer), sourceOfFunds];
     const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
     for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? (i <= 1 ? false : null));
     return mapString(await this.transport.request(method, params), { method, field: "(result)" });

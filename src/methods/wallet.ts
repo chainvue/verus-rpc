@@ -1,6 +1,6 @@
-import { formatAmount } from "../amount.js";
-import { OperationFailedError, OperationTimeoutError, ResponseMappingError, TransportError } from "../errors.js";
-import { LosslessNumber, toSafeNumbers } from "../lossless.js";
+import { amountParam } from "../amount.js";
+import { ResponseMappingError } from "../errors.js";
+import { toSafeNumbers } from "../lossless.js";
 import {
   expectArray,
   expectObject,
@@ -15,6 +15,7 @@ import {
   withPassthrough,
 } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
+import { pollOperation } from "./operations.js";
 import { requestT2 } from "./t2.js";
 import type {
   GetWalletInfoResult,
@@ -310,7 +311,7 @@ export function mapSignMessage(raw: unknown): SignMessageResult {
 function serializeOutput(output: SendCurrencyOutput): Record<string, unknown> {
   const raw: Record<string, unknown> = {
     address: output.address,
-    amount: new LosslessNumber(formatAmount(output.amount)),
+    amount: amountParam(output.amount),
   };
   if (output.currency !== undefined) raw["currency"] = output.currency;
   if (output.convertto !== undefined) raw["convertto"] = output.convertto;
@@ -323,10 +324,6 @@ function serializeOutput(output: SendCurrencyOutput): Record<string, unknown> {
   if (output.burn !== undefined) raw["burn"] = output.burn;
   if (output.mintnew !== undefined) raw["mintnew"] = output.mintnew;
   return raw;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Wallet family — balances, transactions, sends, async operations. */
@@ -374,7 +371,7 @@ export class WalletApi {
       params.push(options.minConf ?? 1);
     }
     if (options.feeAmount !== undefined) {
-      params.push(new LosslessNumber(formatAmount(options.feeAmount)));
+      params.push(amountParam(options.feeAmount));
     }
     const result = await this.transport.request("sendcurrency", params);
     return mapString(result, { method: "sendcurrency", field: "(result)" });
@@ -394,48 +391,17 @@ export class WalletApi {
    */
   async sendCurrencyAndWait(options: SendCurrencyAndWaitOptions): Promise<SendCurrencyAndWaitResult> {
     const { pollIntervalMs, waitTimeoutMs, ...sendOptions } = options;
-    const interval = pollIntervalMs ?? 1_000;
-    const timeout = waitTimeoutMs ?? 120_000;
     const opid = await this.sendCurrency(sendOptions);
-    const deadline = Date.now() + timeout;
-    let lastPollError: TransportError | undefined;
-
-    for (;;) {
-      let statuses: OperationStatus[] | undefined;
-      try {
-        statuses = await this.getOperationStatus({ operationIds: [opid] });
-        lastPollError = undefined;
-      } catch (err) {
-        // The send is already in flight — a transient transport failure while
-        // polling must not abandon the opid. But bad credentials and caller
-        // aborts cannot recover by re-polling: fail those immediately.
-        if (!(err instanceof TransportError) || err.reason === "auth" || err.reason === "aborted") throw err;
-        lastPollError = err;
-      }
-      const status = statuses?.find((s) => s.id === opid);
-      if (status !== undefined) {
-        if (status.status === "success") {
-          const txid = status.result?.txid;
-          if (typeof txid !== "string") {
-            throw new ResponseMappingError("z_getoperationstatus", "result.txid", "success without txid");
-          }
-          return { opid, txid };
-        }
-        if (status.status === "failed" || status.status === "cancelled") {
-          throw new OperationFailedError(
-            opid,
-            status.status,
-            status.error?.code,
-            status.error?.message ?? "no error message",
-          );
-        }
-      }
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) {
-        throw new OperationTimeoutError(opid, timeout, lastPollError);
-      }
-      await sleep(Math.min(interval, remaining));
+    const status = await pollOperation(
+      async () => (await this.getOperationStatus({ operationIds: [opid] })).find((s) => s.id === opid),
+      opid,
+      { intervalMs: pollIntervalMs ?? 1_000, timeoutMs: waitTimeoutMs ?? 120_000 },
+    );
+    const txid = status.result?.txid;
+    if (typeof txid !== "string") {
+      throw new ResponseMappingError("z_getoperationstatus", "result.txid", "success without txid");
     }
+    return { opid, txid };
   }
 
   // -------------------------------------------------------------------------
@@ -470,7 +436,7 @@ export class WalletApi {
   async sendMany(options: SendManyOptions): Promise<string> {
     const amounts: Record<string, unknown> = {};
     for (const [address, sats] of Object.entries(options.amounts)) {
-      amounts[address] = new LosslessNumber(formatAmount(sats));
+      amounts[address] = amountParam(sats);
     }
     // Positional: the deprecated account slot must be "".
     const params: unknown[] = ["", amounts];
@@ -686,7 +652,7 @@ export class WalletApi {
     commentTo?: string;
     subtractFeeFromAmount?: boolean;
   }): Promise<string> {
-    const params: unknown[] = [options.address, new LosslessNumber(formatAmount(options.amount))];
+    const params: unknown[] = [options.address, amountParam(options.amount)];
     // Positional daemon params: comment / comment-to / subtractfee.
     const needCommentTo = options.commentTo !== undefined || options.subtractFeeFromAmount !== undefined;
     const needComment = options.comment !== undefined || needCommentTo;
@@ -714,7 +680,7 @@ export class WalletApi {
     const params: unknown[] = [
       options.fromAccount ?? "",
       options.toAddress,
-      new LosslessNumber(formatAmount(options.amount)),
+      amountParam(options.amount),
     ];
     const needCommentTo = options.commentTo !== undefined;
     const needComment = options.comment !== undefined || needCommentTo;
@@ -734,7 +700,7 @@ export class WalletApi {
    */
   async setTxFee(options: { amount: bigint }): Promise<boolean> {
     return mapBoolean(
-      await this.transport.request("settxfee", [new LosslessNumber(formatAmount(options.amount))]),
+      await this.transport.request("settxfee", [amountParam(options.amount)]),
       { method: "settxfee", field: "(result)" },
     );
   }

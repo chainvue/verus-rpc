@@ -4,6 +4,7 @@
  * amounts as `bigint` satoshis; these helpers convert between that and the
  * daemon's 8-decimal notation.
  */
+import { LosslessNumber } from "./lossless.js";
 
 /** Verus amounts have 8 decimal places: 1 VRSC = 100_000_000 satoshis. */
 export const SATS_PER_COIN = 100_000_000n;
@@ -66,6 +67,16 @@ export function parseAmount(value: string, options?: ParseAmountOptions): bigint
     return -sats;
   }
   return sats;
+}
+
+/**
+ * Bigint satoshis → the exact JSON number token the daemon expects
+ * (8-decimal coins, serialized losslessly — never a float). THE one way an
+ * outbound amount crosses the wire; also useful with `client.call()`:
+ * `call("sendcurrency", ["*", [{ address, amount: amountParam(sats) }]])`.
+ */
+export function amountParam(sats: bigint): LosslessNumber {
+  return new LosslessNumber(formatAmount(sats));
 }
 
 /**

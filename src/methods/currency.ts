@@ -1,5 +1,5 @@
-import { formatAmount } from "../amount.js";
-import { LosslessNumber, toSafeNumbers } from "../lossless.js";
+import { amountParam } from "../amount.js";
+import { toSafeNumbers } from "../lossless.js";
 import {
   expectArray,
   expectObject,
@@ -353,6 +353,10 @@ export class CurrencyApi {
   async getCurrencyState(options: GetCurrencyStateOptions): Promise<CurrencyStateSnapshot[]> {
     const params: unknown[] = [options.currency];
     if (options.height !== undefined || options.conversionDataCurrency !== undefined) {
+      // A skipped height slot must be null, not 0: the daemon treats null as
+      // "current tip" (same as omitting) while 0 returns the GENESIS state —
+      // verified live against VRSCTEST. Start-height slots elsewhere in this
+      // file gap-fill with 0 because there 0 IS the daemon default.
       params.push(options.height ?? null);
     }
     if (options.conversionDataCurrency !== undefined) params.push(options.conversionDataCurrency);
@@ -423,7 +427,7 @@ export class CurrencyApi {
     const raw: Record<string, unknown> = {
       currency: options.currency,
       convertto: options.convertTo,
-      amount: new LosslessNumber(formatAmount(options.amount)),
+      amount: amountParam(options.amount),
     };
     if (options.via !== undefined) raw["via"] = options.via;
     if (options.preConvert !== undefined) raw["preconvert"] = options.preConvert;
@@ -443,7 +447,7 @@ export class CurrencyApi {
   }): Promise<Record<string, unknown>> {
     const params: unknown[] = [options.fromAddress, options.offer];
     if (options.returnTx !== undefined || options.feeAmount !== undefined) params.push(options.returnTx ?? false);
-    if (options.feeAmount !== undefined) params.push(new LosslessNumber(formatAmount(options.feeAmount)));
+    if (options.feeAmount !== undefined) params.push(amountParam(options.feeAmount));
     return requestT2(this.transport, "makeoffer", params);
   }
 
@@ -456,7 +460,7 @@ export class CurrencyApi {
   }): Promise<unknown> {
     const params: unknown[] = [options.fromAddress, options.offer];
     if (options.returnTx !== undefined || options.feeAmount !== undefined) params.push(options.returnTx ?? false);
-    if (options.feeAmount !== undefined) params.push(new LosslessNumber(formatAmount(options.feeAmount)));
+    if (options.feeAmount !== undefined) params.push(amountParam(options.feeAmount));
     return requestT2(this.transport, "takeoffer", params);
   }
 

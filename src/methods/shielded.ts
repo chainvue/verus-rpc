@@ -1,8 +1,9 @@
-import { formatAmount } from "../amount.js";
-import { OperationFailedError, OperationTimeoutError, TransportError } from "../errors.js";
+import { amountParam } from "../amount.js";
+import { OperationFailedError } from "../errors.js";
 import { LosslessNumber } from "../lossless.js";
 import { expectArray, mapString, mapStringArray } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
+import { pollOperation } from "./operations.js";
 import { requestT2 } from "./t2.js";
 import { mapOperationStatus, type OperationStatus } from "./wallet.js";
 
@@ -80,8 +81,9 @@ function decimalString(value: unknown): string {
   return typeof value === "string" ? value : String(value);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** The daemon's default z-operation fee (0.0001), for gap-filled slots. */
+function defaultZFee(): LosslessNumber {
+  return new LosslessNumber("0.0001");
 }
 
 /** Shielded wallet surface (z_*). */
@@ -163,14 +165,14 @@ export class ShieldedApi {
     const amounts = options.amounts.map((entry) => {
       const raw: Record<string, unknown> = {
         address: entry.address,
-        amount: new LosslessNumber(formatAmount(entry.amount)),
+        amount: amountParam(entry.amount),
       };
       if (entry.memo !== undefined) raw["memo"] = entry.memo;
       return raw;
     });
     const params: unknown[] = [options.fromAddress, amounts];
     if (options.minConf !== undefined || options.fee !== undefined) params.push(options.minConf ?? 1);
-    if (options.fee !== undefined) params.push(new LosslessNumber(formatAmount(options.fee)));
+    if (options.fee !== undefined) params.push(amountParam(options.fee));
     return mapString(await this.transport.request("z_sendmany", params), {
       method: "z_sendmany",
       field: "(result)",
@@ -179,43 +181,17 @@ export class ShieldedApi {
 
   /** Poll `z_getoperationstatus` until the operation reaches a final state. */
   async waitForOperation(options: WaitForOperationOptions): Promise<OperationStatus> {
-    const interval = options.pollIntervalMs ?? 1_000;
-    const timeout = options.waitTimeoutMs ?? 120_000;
-    const deadline = Date.now() + timeout;
-    let lastPollError: TransportError | undefined;
-    for (;;) {
-      let status: OperationStatus | undefined;
-      try {
+    return pollOperation(
+      async () => {
         const raw = expectArray(
           await this.transport.request("z_getoperationstatus", [[options.opid]]),
           "z_getoperationstatus",
         );
-        status = raw.map((item, i) => mapOperationStatus(item, i)).find((s) => s.id === options.opid);
-        lastPollError = undefined;
-      } catch (err) {
-        // The operation is already in flight — a transient transport failure
-        // while polling must not abandon the opid. But bad credentials and
-        // caller aborts cannot recover by re-polling: fail those immediately.
-        if (!(err instanceof TransportError) || err.reason === "auth" || err.reason === "aborted") throw err;
-        lastPollError = err;
-      }
-      if (status !== undefined) {
-        if (status.status === "success") return status;
-        if (status.status === "failed" || status.status === "cancelled") {
-          throw new OperationFailedError(
-            options.opid,
-            status.status,
-            status.error?.code,
-            status.error?.message ?? "no error message",
-          );
-        }
-      }
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) {
-        throw new OperationTimeoutError(options.opid, timeout, lastPollError);
-      }
-      await sleep(Math.min(interval, remaining));
-    }
+        return raw.map((item, i) => mapOperationStatus(item, i)).find((s) => s.id === options.opid);
+      },
+      options.opid,
+      { intervalMs: options.pollIntervalMs ?? 1_000, timeoutMs: options.waitTimeoutMs ?? 120_000 },
+    );
   }
 
   /** `zSendMany` + wait for the final state. Resolves with the txid. */
@@ -252,7 +228,7 @@ export class ShieldedApi {
   }): Promise<Record<string, unknown>> {
     const params: unknown[] = [options.fromAddresses, options.toAddress];
     const opts: unknown[] = [
-      options.fee === undefined ? undefined : new LosslessNumber(formatAmount(options.fee)),
+      options.fee === undefined ? undefined : amountParam(options.fee),
       options.transparentLimit,
       options.shieldedLimit,
       options.memo,
@@ -261,7 +237,7 @@ export class ShieldedApi {
     // 0.0001, transparent limit 50, shielded limit 200 (the sapling default —
     // sprout notes default to 20 on a bare daemon call; set `shieldedLimit`
     // explicitly if you merge sprout notes).
-    const defaults: unknown[] = [new LosslessNumber("0.0001"), 50, 200, ""];
+    const defaults: unknown[] = [defaultZFee(), 50, 200, ""];
     const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
     for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? defaults[i]);
     return requestT2(this.transport, "z_mergetoaddress", params);
@@ -276,7 +252,7 @@ export class ShieldedApi {
   }): Promise<Record<string, unknown>> {
     const params: unknown[] = [options.fromAddress, options.toAddress];
     if (options.fee !== undefined || options.limit !== undefined) {
-      params.push(options.fee === undefined ? new LosslessNumber("0.0001") : new LosslessNumber(formatAmount(options.fee)));
+      params.push(options.fee === undefined ? defaultZFee() : amountParam(options.fee));
     }
     if (options.limit !== undefined) params.push(options.limit);
     return requestT2(this.transport, "z_shieldcoinbase", params);
