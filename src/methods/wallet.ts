@@ -14,7 +14,7 @@ import {
   withPassthrough,
 } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
-import { pollOperation, requireTxid } from "./operations.js";
+import { pollOperation, requireTxid, throwIfAborted } from "./operations.js";
 import { decimalString, decimalStringEntries, requestT2 } from "./t2.js";
 import type {
   GetWalletInfoResult,
@@ -145,6 +145,8 @@ export interface OperationStatus {
 export interface GetOperationStatusOptions {
   /** Restrict to these opids; all known operations when omitted. */
   operationIds?: string[];
+  /** Aborts the in-flight request. */
+  signal?: AbortSignal;
 }
 
 export interface SendCurrencyAndWaitOptions extends SendCurrencyOptions {
@@ -152,6 +154,13 @@ export interface SendCurrencyAndWaitOptions extends SendCurrencyOptions {
   pollIntervalMs?: number;
   /** Deadline for the operation to reach a final state. Default 120s. */
   waitTimeoutMs?: number;
+  /**
+   * Cancels the wait: checked before the send, aborts each in-flight poll
+   * request, and interrupts the inter-poll sleep. A cancel surfaces as
+   * `TransportError("aborted")`. An already-broadcast send still completes on
+   * the daemon — cancelling stops the polling, not the transaction.
+   */
+  signal?: AbortSignal;
 }
 
 export interface SendCurrencyAndWaitResult {
@@ -382,7 +391,10 @@ export class WalletApi {
   /** `z_getoperationstatus` — state of async wallet operations. */
   async getOperationStatus(options?: GetOperationStatusOptions): Promise<OperationStatus[]> {
     const params: unknown[] = options?.operationIds === undefined ? [] : [options.operationIds];
-    const result = expectArray(await this.transport.request("z_getoperationstatus", params), "z_getoperationstatus");
+    const result = expectArray(
+      await this.transport.request("z_getoperationstatus", params, options?.signal),
+      "z_getoperationstatus",
+    );
     return result.map((item, i) => mapOperationStatus(item, i));
   }
 
@@ -394,12 +406,18 @@ export class WalletApi {
    * completed, only the response shape drifted; never retry it.
    */
   async sendCurrencyAndWait(options: SendCurrencyAndWaitOptions): Promise<SendCurrencyAndWaitResult> {
-    const { pollIntervalMs, waitTimeoutMs, ...sendOptions } = options;
+    const { pollIntervalMs, waitTimeoutMs, signal, ...sendOptions } = options;
+    // Honor a pre-aborted signal before broadcasting — do not send, then poll.
+    throwIfAborted(signal, "sendCurrencyAndWait");
     const opid = await this.sendCurrency(sendOptions);
     const status = await pollOperation(
-      async () => (await this.getOperationStatus({ operationIds: [opid] })).find((s) => s.id === opid),
+      async () =>
+        (await this.getOperationStatus({ operationIds: [opid], ...(signal ? { signal } : {}) })).find(
+          (s) => s.id === opid,
+        ),
       opid,
       { intervalMs: pollIntervalMs ?? 1_000, timeoutMs: waitTimeoutMs ?? 120_000 },
+      signal,
     );
     return { opid, txid: requireTxid(status) };
   }

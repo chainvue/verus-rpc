@@ -3,7 +3,7 @@ import { LosslessNumber } from "../lossless.js";
 import { expectArray, mapString, mapStringArray } from "../mapping.js";
 import { toSafeNumbers } from "../lossless.js";
 import type { RpcTransport } from "../transport.js";
-import { pollOperation, requireTxid } from "./operations.js";
+import { pollOperation, requireTxid, throwIfAborted } from "./operations.js";
 import { positionalTail } from "./params.js";
 import { decimalString, decimalStringEntries, requestT2 } from "./t2.js";
 import { mapOperationStatus, type OperationStatus } from "./wallet.js";
@@ -79,6 +79,12 @@ export interface WaitForOperationOptions {
   pollIntervalMs?: number;
   /** Default 120s. */
   waitTimeoutMs?: number;
+  /**
+   * Cancels the wait: aborts each in-flight poll request and interrupts the
+   * inter-poll sleep, surfacing as `TransportError("aborted")`. The operation
+   * still completes on the daemon — cancelling stops the polling only.
+   */
+  signal?: AbortSignal;
 }
 
 /** The daemon's default z-operation fee (0.0001), for gap-filled slots. */
@@ -189,13 +195,14 @@ export class ShieldedApi {
     return pollOperation(
       async () => {
         const raw = expectArray(
-          await this.transport.request("z_getoperationstatus", [[options.opid]]),
+          await this.transport.request("z_getoperationstatus", [[options.opid]], options.signal),
           "z_getoperationstatus",
         );
         return raw.map((item, i) => mapOperationStatus(item, i)).find((s) => s.id === options.opid);
       },
       options.opid,
       { intervalMs: options.pollIntervalMs ?? 1_000, timeoutMs: options.waitTimeoutMs ?? 120_000 },
+      options.signal,
     );
   }
 
@@ -205,14 +212,16 @@ export class ShieldedApi {
    * the send completed, only the response shape drifted; never retry it.
    */
   async zSendManyAndWait(
-    options: ZSendManyOptions & { pollIntervalMs?: number; waitTimeoutMs?: number },
+    options: ZSendManyOptions & { pollIntervalMs?: number; waitTimeoutMs?: number; signal?: AbortSignal },
   ): Promise<{ opid: string; txid: string }> {
-    const { pollIntervalMs, waitTimeoutMs, ...sendOptions } = options;
+    const { pollIntervalMs, waitTimeoutMs, signal, ...sendOptions } = options;
+    throwIfAborted(signal, "zSendManyAndWait");
     const opid = await this.zSendMany(sendOptions);
     const status = await this.waitForOperation({
       opid,
       ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {}),
       ...(waitTimeoutMs !== undefined ? { waitTimeoutMs } : {}),
+      ...(signal !== undefined ? { signal } : {}),
     });
     return { opid, txid: requireTxid(status) };
   }
