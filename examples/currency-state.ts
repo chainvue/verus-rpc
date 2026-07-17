@@ -3,13 +3,14 @@
  * Shows the amounts invariant — reserves/weights are bigint, formatted with
  * formatAmount, never float.
  *
- *   npx tsx examples/currency-state.ts Bridge.vETH
+ *   pnpm i && node --experimental-strip-types examples/currency-state.ts Bridge.vETH
  */
 import { formatAmount, VerusClient } from "@chainvue/verus-rpc";
 
 const currency = process.argv[2] ?? "Bridge.vETH";
 
-const client = new VerusClient({ url: "https://api.verus.services", user: "public", pass: "public" });
+// Public nodes take no credentials — omit both user and pass.
+const client = new VerusClient({ url: "https://api.verus.services" });
 
 const def = await client.currency.getCurrency({ currency });
 console.log(`${def.fullyqualifiedname ?? def.name} (${def.currencyid})`);

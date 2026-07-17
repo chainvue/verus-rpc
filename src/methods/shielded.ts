@@ -1,9 +1,11 @@
 import { amountParam } from "../amount.js";
 import { LosslessNumber } from "../lossless.js";
 import { expectArray, mapString, mapStringArray } from "../mapping.js";
+import { toSafeNumbers } from "../lossless.js";
 import type { RpcTransport } from "../transport.js";
 import { pollOperation, requireTxid } from "./operations.js";
-import { requestT2 } from "./t2.js";
+import { positionalTail } from "./params.js";
+import { decimalString, decimalStringEntries, requestT2 } from "./t2.js";
 import { mapOperationStatus, type OperationStatus } from "./wallet.js";
 
 /**
@@ -79,10 +81,6 @@ export interface WaitForOperationOptions {
   waitTimeoutMs?: number;
 }
 
-function decimalString(value: unknown): string {
-  return typeof value === "string" ? value : String(value);
-}
-
 /** The daemon's default z-operation fee (0.0001), for gap-filled slots. */
 function defaultZFee(): LosslessNumber {
   return new LosslessNumber("0.0001");
@@ -128,7 +126,8 @@ export class ShieldedApi {
   async zListReceivedByAddress(options: { address: string; minConf?: number }): Promise<ZReceivedEntry[]> {
     const params: unknown[] = [options.address];
     if (options.minConf !== undefined) params.push(options.minConf);
-    return requestT2(this.transport, "z_listreceivedbyaddress", params);
+    const raw = await this.transport.request("z_listreceivedbyaddress", params);
+    return decimalStringEntries<ZReceivedEntry>(toSafeNumbers(raw), "z_listreceivedbyaddress", "amount");
   }
 
   /** Unspent shielded notes. T2. */
@@ -147,7 +146,8 @@ export class ShieldedApi {
       params.push(options.includeWatchOnly ?? false);
     }
     if (options?.addresses !== undefined) params.push(options.addresses);
-    return requestT2(this.transport, "z_listunspent", params);
+    const raw = await this.transport.request("z_listunspent", params);
+    return decimalStringEntries<ZUnspentEntry>(toSafeNumbers(raw), "z_listunspent", "amount");
   }
 
   /** New shielded address. VRSCTEST note: sapling support may be limited. */
@@ -240,8 +240,7 @@ export class ShieldedApi {
     // sprout notes default to 20 on a bare daemon call; set `shieldedLimit`
     // explicitly if you merge sprout notes).
     const defaults: unknown[] = [defaultZFee(), 50, 200, ""];
-    const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
-    for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? defaults[i]);
+    params.push(...positionalTail(opts, defaults));
     return requestT2(this.transport, "z_mergetoaddress", params);
   }
 

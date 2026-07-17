@@ -4,11 +4,11 @@
  * type-honesty check: if a mapper or curated type disagrees with what the
  * daemon actually sends, it fails here, not at a consumer.
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { VerusRpcError } from "../src/errors.js";
-import { parseLossless } from "../src/lossless.js";
+import { parseLossless, toSafeNumbers } from "../src/lossless.js";
 import { mapGetInfo } from "../src/methods/chain.js";
 import {
   mapConversionEstimate,
@@ -16,9 +16,15 @@ import {
   mapCurrencyDefinition,
   mapCurrencyState,
 } from "../src/methods/currency.js";
-import { mapAddressBalance } from "../src/methods/addressindex.js";
+import { mapAddressBalance, mapAddressDelta, mapAddressUtxo } from "../src/methods/addressindex.js";
 import { mapCoinSupply, mapGetVdxfId } from "../src/methods/blockchain.js";
-import { mapGetIdentity, mapIdentityDefinition, mapIdentityHistory, mapIdentityResult } from "../src/methods/identity.js";
+import {
+  mapGetIdentity,
+  mapIdentityDefinition,
+  mapIdentityHistory,
+  mapIdentityResult,
+  mapNameCommitment,
+} from "../src/methods/identity.js";
 import {
   mapAddressGroupings,
   mapCurrencyBalance,
@@ -30,6 +36,7 @@ import {
   mapUnspentOutput,
 } from "../src/methods/wallet.js";
 import { mapAmount, mapInt, mapString } from "../src/mapping.js";
+import { parseAmount } from "../src/amount.js";
 import { DaemonTransport } from "../src/transport.js";
 
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
@@ -217,10 +224,64 @@ describe("fixture conformance", () => {
     expect(result.currencyreceived!["i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV"]).toBe(result.received);
   });
 
+  it("getblocksubsidy (recorded, mainnet) — T2 single-decimal token stays exact", () => {
+    // Recorded precisely because of `"miner":3.0`: JSON.parse would render it
+    // back as `3`, losing the daemon's own formatting. The T2 path keeps the
+    // exact token instead of ever producing a float.
+    const subsidy = toSafeNumbers(fixtureResult("getblocksubsidy.json")) as Record<string, unknown>;
+    expect(subsidy["miner"]).toBe("3.0");
+    expect(parseAmount(String(subsidy["miner"]))).toBe(300_000_000n);
+  });
+
+  it("getblockchaininfo (recorded, mainnet) — T2 reference shape, no float64 anywhere", () => {
+    const info = toSafeNumbers(fixtureResult("getblockchaininfo.json")) as Record<string, unknown>;
+    expect(info["chain"]).toBe("main");
+    expect(info["blocks"]).toBe(4_147_468); // safe integer → number
+    // A value past float64's exact-integer range must stay an exact string.
+    expect(info["difficulty"]).toBe("3602669800507.299");
+    for (const value of Object.values(info)) {
+      expect(typeof value === "number" && !Number.isSafeInteger(value)).toBe(false);
+    }
+  });
+
   it("getvdxfid (recorded, mainnet)", () => {
     const result = mapGetVdxfId(fixtureResult("getvdxfid.json"));
     expect(result.hash160result).toBe("dcb11f97bce0c8734d92da7b0f5551acfbb629bb");
     expect(result.qualifiedname.name).toBe("vrsc::system.currency.export");
+  });
+
+  it("getaddressutxos (recorded, mainnet) — satoshi-integer UTXO amounts", () => {
+    const entries = fixtureResult("getaddressutxos.json") as unknown[];
+    const utxos = entries.map((e, i) => mapAddressUtxo(e, i));
+    // A real 0-value CC/identity output and a real value-bearing UTXO.
+    expect(utxos[0]!.satoshis).toBe(0n);
+    expect(utxos[1]!.satoshis).toBe(1_013_218n);
+    expect(utxos[1]!.address).toBe("REpxm9bCLMiHRNVPA9unPBWixie7uHFA5C");
+    expect(utxos[1]!.height).toBe(3_634_845);
+  });
+
+  it("getaddressdeltas (recorded, mainnet) — satoshi integer AND 8-decimal currencyvalues in one body", () => {
+    const entries = fixtureResult("getaddressdeltas.json") as unknown[];
+    const deltas = entries.map((e, i) => mapAddressDelta(e, "getaddressdeltas", i));
+    expect(deltas[0]!.satoshis).toBe(1_013_218n);
+    // The recorded body carries the SAME value twice in two representations —
+    // `satoshis: 1013218` (integer) and `currencyvalues: {...: 0.01013218}`
+    // (8-decimal). The passthrough field must survive as an exact decimal
+    // string, never a float, and must still agree with the satoshi integer.
+    const currencyvalues = deltas[0]!["currencyvalues"] as Record<string, unknown>;
+    const [amount] = Object.values(currencyvalues);
+    expect(amount).toBe("0.01013218");
+    expect(parseAmount(String(amount))).toBe(deltas[0]!.satoshis);
+  });
+
+  it("registernamecommitment (recorded VRSCTEST, salt scrubbed) — commitment shape", () => {
+    const result = mapNameCommitment(fixtureResult("registernamecommitment.json"));
+    expect(result.txid).toHaveLength(64);
+    expect(result.namereservation.name).toBe("verusrpc-test-mrhspmhmiucb");
+    expect(result.namereservation.salt).toHaveLength(64);
+    expect(result.namereservation.version).toBe(1);
+    // Present-but-empty referral must survive as "" and not become undefined.
+    expect(result.namereservation.referral).toBe("");
   });
 
   it("coinsupply (recorded VRSCTEST probe) — supply-scale amounts survive byte-exact", () => {
@@ -246,5 +307,52 @@ describe("fixture conformance", () => {
     const err = await transport.request("getcurrencybalance", []).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(VerusRpcError);
     expect((err as VerusRpcError).code).toBe(-32601);
+  });
+});
+
+/**
+ * Enforces the rule in .github/PULL_REQUEST_TEMPLATE.md: "T1 methods ship a
+ * fixture in fixtures/ and a conformance assertion in test/fixtures.test.ts."
+ *
+ * A mapper that genuinely cannot have a fixture must be listed below WITH a
+ * reason, so an exception is a decision on the record rather than an
+ * omission.
+ */
+describe("T1 fixture rule", () => {
+  // Empty on purpose: every exported mapper currently has a fixture. An entry
+  // here exempts one, and the reason is the record of that decision.
+  const WITHOUT_FIXTURE: Record<string, string> = {};
+
+  /** Exported `map*` symbols of the method modules — the T1 mapper surface. */
+  function discoverMappers(): string[] {
+    const dir = join(import.meta.dirname, "..", "src", "methods");
+    const names = new Set<string>();
+    for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
+      const src = readFileSync(join(dir, file), "utf8");
+      for (const m of src.matchAll(/^export (?:async )?(?:function|const) (map[A-Z]\w*)/gm)) {
+        names.add(m[1]!);
+      }
+    }
+    return [...names].sort();
+  }
+
+  it("every exported T1 mapper is exercised against a recorded fixture", () => {
+    const suite = readFileSync(join(import.meta.dirname, "fixtures.test.ts"), "utf8");
+    // Only the conformance block counts — a mapper named in an unrelated
+    // error-path assertion elsewhere must not satisfy the rule.
+    const start = suite.indexOf('describe("fixture conformance"');
+    const end = suite.indexOf('describe("T1 fixture rule"');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const conformance = suite.slice(start, end);
+
+    const mappers = discoverMappers();
+    expect(mappers.length).toBeGreaterThan(15); // discovery itself must not silently break
+
+    // A call — `mapX(` — not a bare mention.
+    const uncovered = mappers.filter(
+      (name) => WITHOUT_FIXTURE[name] === undefined && !conformance.includes(`${name}(`),
+    );
+    expect(uncovered).toEqual([]);
   });
 });

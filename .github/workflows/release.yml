@@ -147,16 +147,35 @@ jobs:
           npm pkg set type=module
           npm install "@chainvue/verus-rpc@${{ steps.v.outputs.version }}"
 
-      - name: Import + read-only call
+      # Blocking: proves the published tarball imports as ESM and that the
+      # money path works. Offline on purpose — nothing here can fail because
+      # of someone else's infrastructure.
+      - name: Import + offline assertions
         run: |
           cd /tmp/smoke
           cat > smoke.mjs <<'EOF'
           import { VerusClient, formatAmount, parseAmount, MockTransport } from "@chainvue/verus-rpc";
           if (parseAmount("2.00000000") !== 200000000n) throw new Error("parseAmount broken");
+          if (formatAmount(200000000n) !== "2.00000000") throw new Error("formatAmount broken");
           const mock = new MockTransport().respondJson("getblockcount", "42");
           if ((await new VerusClient({ transport: mock }).chain.getBlockCount()) !== 42) throw new Error("mock broken");
-          const client = new VerusClient({ url: "https://api.verus.services", user: "public", pass: "public" });
-          const info = await client.chain.getInfo();
-          console.log("smoke ok:", info.VRSCversion, formatAmount(info.relayfee));
+          console.log("smoke ok (offline)");
           EOF
           node smoke.mjs
+
+      # Non-blocking: a nice end-to-end signal, but it depends on a public
+      # gateway we do not control. The package is already published by this
+      # point, so letting a third-party outage turn the release red would be a
+      # false alarm on the highest-stakes workflow.
+      - name: Live gateway call (informational)
+        continue-on-error: true
+        run: |
+          cd /tmp/smoke
+          cat > live.mjs <<'EOF'
+          import { VerusClient, formatAmount } from "@chainvue/verus-rpc";
+          // Public gateways take no credentials — omit them entirely.
+          const client = new VerusClient({ url: "https://api.verus.services" });
+          const info = await client.chain.getInfo();
+          console.log("live ok:", info.VRSCversion, formatAmount(info.relayfee));
+          EOF
+          node live.mjs

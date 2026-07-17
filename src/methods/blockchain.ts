@@ -1,7 +1,16 @@
 import { amountParam } from "../amount.js";
 import { RpcErrorCode, VerusRpcError } from "../errors.js";
 import { isLosslessNumber } from "../lossless.js";
-import { expectObject, mapAmount, mapBoolean, mapInt, mapString, mapStringOptional, withPassthrough } from "../mapping.js";
+import {
+  expectObject,
+  mapAmount,
+  mapBoolean,
+  mapInt,
+  mapString,
+  mapStringOptional,
+  withPassthrough,
+  type FieldContext,
+} from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
 import { requestT2 } from "./t2.js";
 
@@ -96,7 +105,7 @@ export function mapCoinSupply(raw: unknown): CoinSupplyResult {
       typeof inBandError === "string" ? inBandError : JSON.stringify(inBandError),
     );
   }
-  const ctx = (field: string): { method: string; field: string } => ({ method, field });
+  const ctx = (field: string): FieldContext => ({ method, field });
   return withPassthrough(obj, {
     coin: mapString(obj["coin"], ctx("coin")),
     height: mapInt(obj["height"], ctx("height")),

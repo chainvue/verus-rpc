@@ -14,6 +14,7 @@ import {
 } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
 import { sleep } from "./operations.js";
+import { positionalTail } from "./params.js";
 import { requestT2 } from "./t2.js";
 import { mapGetTransaction } from "./wallet.js";
 
@@ -369,8 +370,7 @@ export class IdentityApi {
     const params: unknown[] = [options.nameOrAddress];
     const opts = [options.heightStart, options.heightEnd, options.txProofs, options.txProofHeight, options.vdxfKey];
     const defaults: unknown[] = [0, 0, false, 0, null];
-    const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
-    for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? defaults[i]);
+    params.push(...positionalTail(opts, defaults));
     return mapIdentityResult(await this.transport.request("getidentitycontent", params), "getidentitycontent");
   }
 
@@ -379,8 +379,7 @@ export class IdentityApi {
     const params: unknown[] = [options.nameOrAddress];
     const opts = [options.heightStart, options.heightEnd, options.txProofs, options.txProofHeight];
     const defaults: unknown[] = [0, 0, false, 0];
-    const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
-    for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? defaults[i]);
+    params.push(...positionalTail(opts, defaults));
     return mapIdentityHistory(await this.transport.request("getidentityhistory", params));
   }
 
@@ -389,8 +388,7 @@ export class IdentityApi {
     const params: unknown[] = [];
     const opts = [options?.includeCanSpend, options?.includeCanSign, options?.includeWatchOnly];
     const defaults: unknown[] = [true, true, false];
-    const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
-    for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? defaults[i]);
+    params.push(...positionalTail(opts, defaults));
     const result = expectArray(await this.transport.request("listidentities", params), "listidentities");
     return result.map((item) => mapIdentityResult(item, "listidentities"));
   }
@@ -431,9 +429,9 @@ export class IdentityApi {
   async registerNameCommitment(options: RegisterNameCommitmentOptions): Promise<NameCommitmentResult> {
     const params: unknown[] = [options.name, options.controlAddress];
     const opts = [options.referralIdentity, options.parent, options.sourceOfFunds];
-    const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
     // Skipped middle positions are sent as JSON null (daemon treats null as "not provided").
-    for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? null);
+    const defaults: unknown[] = [null, null, null];
+    params.push(...positionalTail(opts, defaults));
     return mapNameCommitment(await this.transport.request("registernamecommitment", params));
   }
 
@@ -450,8 +448,9 @@ export class IdentityApi {
       options.feeOffer === undefined ? undefined : amountParam(options.feeOffer),
       options.sourceOfFunds,
     ];
-    const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
-    for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? (i === 0 ? false : null));
+    // returnTx defaults false; the later slots mean "not provided" = null.
+    const defaults: unknown[] = [false, null, null];
+    params.push(...positionalTail(opts, defaults));
     return mapString(await this.transport.request("registeridentity", params), {
       method: "registeridentity",
       field: "(result)",
@@ -488,8 +487,9 @@ export class IdentityApi {
       options.feeOffer === undefined ? undefined : amountParam(options.feeOffer),
       options.sourceOfFunds,
     ];
-    const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
-    for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? (i === 0 ? false : null));
+    // returnTx defaults false; the later slots mean "not provided" = null.
+    const defaults: unknown[] = [false, null, null];
+    params.push(...positionalTail(opts, defaults));
     return mapString(await this.transport.request("setidentitytimelock", params), {
       method: "setidentitytimelock",
       field: "(result)",
@@ -506,8 +506,9 @@ export class IdentityApi {
   ): Promise<string> {
     const params: unknown[] = [first];
     const opts: unknown[] = [returnTx, tokenFlag, feeOffer === undefined ? undefined : amountParam(feeOffer), sourceOfFunds];
-    const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
-    for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? (i <= 1 ? false : null));
+    // returnTx and tokenFlag default false; feeOffer/sourceOfFunds = null.
+    const defaults: unknown[] = [false, false, null, null];
+    params.push(...positionalTail(opts, defaults));
     return mapString(await this.transport.request(method, params), { method, field: "(result)" });
   }
 

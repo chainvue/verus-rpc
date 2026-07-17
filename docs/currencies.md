@@ -43,3 +43,22 @@ querying a currency rather than an identity.
 
 `definecurrency` (deep options), notarization/export/import internals stay in
 the `call()` escape hatch (T3) until there is demand to curate them.
+
+## Currency trust (T2)
+
+```ts
+await client.currency.getCurrencyTrust();                       // → null on v1.2.x, see below
+await client.currency.setCurrencyTrust({ currencytrustmode: 1 });
+```
+
+The wallet's per-currency trust ratings — the twin of
+`getIdentityTrust`/`setIdentityTrust` in [`identity.md`](./identity.md), and
+it carries the same daemon bugs (source-verified against v1.2.17):
+
+- `getCurrencyTrust` **always returns `null`** (result built on an
+  uninitialized `UniValue`), and its `currencyIds` filter is never read.
+  Typed `Record<string, unknown> | null` accordingly.
+- `setCurrencyTrust` honours `setratings` **only as an id→rating object map**
+  — the objarray shape in the daemon's own help text is silently skipped —
+  and it reads `currencytrustmode` without ever applying it. The call returns
+  success either way, so **do not assume the mode changed.**

@@ -59,7 +59,26 @@ partially supported — see per-method JSDoc.
 
 ## Key material
 
-`importPrivKey`, `dumpPrivKey`, `dumpWallet`, `backupWallet` and friends are
-typed but handled as secrets: the library never logs their results, and no
-fixture ever contains real key material. Treat the returned strings
+Transparent: `importPrivKey`, `dumpPrivKey`, `dumpWallet`, `importWallet`,
+`backupWallet`, `importAddress`.
+Shielded: `zExportKey`/`zImportKey` (spending keys),
+`zExportViewingKey`/`zImportViewingKey` (view-only — a viewing key reveals
+every incoming transaction of an address), `zExportWallet`/`zImportWallet`.
+
+All are typed but handled as secrets: the library never logs their results,
+and no fixture ever contains real key material. Treat the returned strings
 accordingly.
+
+Two sharp edges:
+
+- `zExportWallet`/`dumpWallet` write to a file **on the node's filesystem**
+  (under the daemon's `-exportdir`) and return that path — not the contents.
+- `zExportWallet({ omitEmptyTAddresses: true })` does **not** merely skip
+  key-less book entries. It omits *keyed* transparent addresses that happen
+  to have no UTXOs, IDs or history — their private keys are then **missing
+  from the backup**. An address you handed out but that hasn't been paid yet
+  is exactly such a case. The daemon's own help warns against it; prefer the
+  default.
+
+`zValidateAddress` needs no wallet and tells you an address's type
+(sprout/sapling) and whether it is yours.

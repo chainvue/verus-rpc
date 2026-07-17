@@ -1,7 +1,9 @@
 # CLAUDE.md — @chainvue/verus-rpc
 
-A **full-coverage, precision-honest** TypeScript client for the Verus
-(`verusd`) JSON-RPC interface — daemon-first, npm-published. This is the
+A **precision-honest** TypeScript client for the Verus (`verusd`) JSON-RPC
+interface — daemon-first, npm-published. Every daemon method is reachable via
+`call()`; the common surface is curated with precise types. Do **not** bill it
+as "full-coverage". This is the
 general-purpose Verus client (distinct from v402's deliberately minimal,
 in-repo `@chainvue/v402-verus-rpc`). Published as `@chainvue/verus-rpc` (renamed
 from the unscoped `verus-rpc`, 2026-07-15).

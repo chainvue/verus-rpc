@@ -42,6 +42,31 @@ describe("ShieldedApi", () => {
     expect(String(params[3])).toBe("0.00010000");
   });
 
+  it("zListUnspent keeps an absent amount ABSENT instead of the string \"undefined\"", async () => {
+    // Coercing a missing field with String() would materialize a truthy
+    // "undefined" and hide exactly the daemon drift T2 exists to surface.
+    const mock = new MockTransport().respondJson("z_listunspent", '[{"txid":"aa","confirmations":1,"address":"zs1"}]');
+    const [entry] = await new ShieldedApi(mock).zListUnspent();
+    expect(entry!["amount"]).toBeUndefined();
+    expect("amount" in entry!).toBe(false);
+  });
+
+  it("zListUnspent coerces a present integer amount to an exact decimal string", async () => {
+    const mock = new MockTransport().respondJson(
+      "z_listunspent",
+      '[{"txid":"aa","confirmations":1,"address":"zs1","amount":2}]',
+    );
+    const [entry] = await new ShieldedApi(mock).zListUnspent();
+    expect(entry!.amount).toBe("2");
+  });
+
+  it("zListUnspent surfaces a non-array reply as ResponseMappingError, not a raw TypeError", async () => {
+    const mock = new MockTransport().respondJson("z_listunspent", "null");
+    const err = await new ShieldedApi(mock).zListUnspent().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ResponseMappingError);
+    expect((err as ResponseMappingError).method).toBe("z_listunspent");
+  });
+
   it("zSendManyAndWait polls to success", async () => {
     const mock = new MockTransport().respond("z_sendmany", "opid-z1");
     mock.respondJson("z_getoperationstatus", '[{"id":"opid-z1","status":"executing"}]');
