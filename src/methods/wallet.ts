@@ -15,7 +15,7 @@ import {
 } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
 import { pollOperation, requireTxid } from "./operations.js";
-import { decimalString, requestT2 } from "./t2.js";
+import { decimalString, decimalStringEntries, requestT2 } from "./t2.js";
 import type {
   GetWalletInfoResult,
   GroupedAddress,
@@ -509,8 +509,8 @@ export class WalletApi {
     if (options?.minConf !== undefined || needEmpty) params.push(options.minConf ?? 1);
     if (needEmpty) params.push(options.includeEmpty ?? false);
     if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
-    const raw = await requestT2<ReceivedByAddressEntry[]>(this.transport, "listreceivedbyaddress", params);
-    return raw.map((entry) => ({ ...entry, amount: decimalString(entry.amount) }));
+    const raw = await this.transport.request("listreceivedbyaddress", params);
+    return decimalStringEntries<ReceivedByAddressEntry>(toSafeNumbers(raw), "listreceivedbyaddress", "amount");
   }
 
   /** Total received by one address. T2 — exact decimal string. */

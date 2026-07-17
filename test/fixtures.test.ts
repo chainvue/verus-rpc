@@ -319,10 +319,9 @@ describe("fixture conformance", () => {
  * omission.
  */
 describe("T1 fixture rule", () => {
-  const WITHOUT_FIXTURE: Record<string, string> = {
-    // mapGetIdentity is an alias of mapIdentityResult, which is covered.
-    mapGetIdentity: "alias of mapIdentityResult (covered by getidentity.json)",
-  };
+  // Empty on purpose: every exported mapper currently has a fixture. An entry
+  // here exempts one, and the reason is the record of that decision.
+  const WITHOUT_FIXTURE: Record<string, string> = {};
 
   /** Exported `map*` symbols of the method modules — the T1 mapper surface. */
   function discoverMappers(): string[] {
@@ -330,7 +329,7 @@ describe("T1 fixture rule", () => {
     const names = new Set<string>();
     for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
       const src = readFileSync(join(dir, file), "utf8");
-      for (const m of src.matchAll(/^export (?:function|const) (map[A-Z]\w*)/gm)) {
+      for (const m of src.matchAll(/^export (?:async )?(?:function|const) (map[A-Z]\w*)/gm)) {
         names.add(m[1]!);
       }
     }
@@ -339,12 +338,21 @@ describe("T1 fixture rule", () => {
 
   it("every exported T1 mapper is exercised against a recorded fixture", () => {
     const suite = readFileSync(join(import.meta.dirname, "fixtures.test.ts"), "utf8");
+    // Only the conformance block counts — a mapper named in an unrelated
+    // error-path assertion elsewhere must not satisfy the rule.
+    const start = suite.indexOf('describe("fixture conformance"');
+    const end = suite.indexOf('describe("T1 fixture rule"');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const conformance = suite.slice(start, end);
+
     const mappers = discoverMappers();
     expect(mappers.length).toBeGreaterThan(15); // discovery itself must not silently break
 
-    // A call — `mapX(` — not a bare mention, so the allowlist's own string
-    // keys below cannot satisfy the check.
-    const uncovered = mappers.filter((name) => WITHOUT_FIXTURE[name] === undefined && !suite.includes(`${name}(`));
+    // A call — `mapX(` — not a bare mention.
+    const uncovered = mappers.filter(
+      (name) => WITHOUT_FIXTURE[name] === undefined && !conformance.includes(`${name}(`),
+    );
     expect(uncovered).toEqual([]);
   });
 });

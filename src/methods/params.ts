@@ -13,6 +13,12 @@
  * they govern rather than inside this helper.
  */
 export function positionalTail(opts: readonly unknown[], defaults: readonly unknown[]): unknown[] {
+  if (defaults.length !== opts.length) {
+    // A short defaults array would push `undefined` into a params slot, which
+    // serializes as null — on a method carrying a feeOffer, silently not the
+    // intended default. Fail at the call site instead.
+    throw new TypeError(`positionalTail: ${opts.length} options but ${defaults.length} defaults`);
+  }
   const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
   const tail: unknown[] = [];
   for (let i = 0; i <= lastSet; i++) tail.push(opts[i] ?? defaults[i]);

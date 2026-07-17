@@ -1,10 +1,11 @@
 import { amountParam } from "../amount.js";
 import { LosslessNumber } from "../lossless.js";
 import { expectArray, mapString, mapStringArray } from "../mapping.js";
+import { toSafeNumbers } from "../lossless.js";
 import type { RpcTransport } from "../transport.js";
 import { pollOperation, requireTxid } from "./operations.js";
 import { positionalTail } from "./params.js";
-import { decimalString, requestT2 } from "./t2.js";
+import { decimalString, decimalStringEntries, requestT2 } from "./t2.js";
 import { mapOperationStatus, type OperationStatus } from "./wallet.js";
 
 /**
@@ -125,8 +126,8 @@ export class ShieldedApi {
   async zListReceivedByAddress(options: { address: string; minConf?: number }): Promise<ZReceivedEntry[]> {
     const params: unknown[] = [options.address];
     if (options.minConf !== undefined) params.push(options.minConf);
-    const raw = await requestT2<ZReceivedEntry[]>(this.transport, "z_listreceivedbyaddress", params);
-    return raw.map((entry) => ({ ...entry, amount: decimalString(entry.amount) }));
+    const raw = await this.transport.request("z_listreceivedbyaddress", params);
+    return decimalStringEntries<ZReceivedEntry>(toSafeNumbers(raw), "z_listreceivedbyaddress", "amount");
   }
 
   /** Unspent shielded notes. T2. */
@@ -145,8 +146,8 @@ export class ShieldedApi {
       params.push(options.includeWatchOnly ?? false);
     }
     if (options?.addresses !== undefined) params.push(options.addresses);
-    const raw = await requestT2<ZUnspentEntry[]>(this.transport, "z_listunspent", params);
-    return raw.map((entry) => ({ ...entry, amount: decimalString(entry.amount) }));
+    const raw = await this.transport.request("z_listunspent", params);
+    return decimalStringEntries<ZUnspentEntry>(toSafeNumbers(raw), "z_listunspent", "amount");
   }
 
   /** New shielded address. VRSCTEST note: sapling support may be limited. */

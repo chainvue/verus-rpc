@@ -1,4 +1,5 @@
 import { toSafeNumbers } from "../lossless.js";
+import { expectArray } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
 
 /**
@@ -23,4 +24,21 @@ export async function requestT2<T>(transport: RpcTransport, method: string, para
  */
 export function decimalString(value: unknown): string {
   return typeof value === "string" ? value : String(value);
+}
+
+/**
+ * Coerce a declared-`string` value field on every entry of a T2 list.
+ *
+ * An ABSENT field stays absent: `String(undefined)` would materialize the
+ * key as the truthy string "undefined", hiding exactly the daemon drift the
+ * tier exists to surface. The list itself is checked, so a non-array reply
+ * fails as a ResponseMappingError naming the method rather than as a raw
+ * TypeError from `.map`.
+ */
+export function decimalStringEntries<T extends Record<string, unknown>>(raw: unknown, method: string, field: string): T[] {
+  return expectArray(raw, method).map((entry) => {
+    const obj = entry as T;
+    const value = obj[field];
+    return value === undefined ? obj : { ...obj, [field]: decimalString(value) };
+  });
 }
