@@ -124,8 +124,9 @@ export class OperationFailedError extends Error {
 /**
  * An async wallet operation (opid) did not reach a final state within the
  * polling deadline. If polling itself was failing at the deadline, the last
- * `TransportError` is attached as `cause`. The operation may still complete
- * on the daemon — check the opid before retrying the send.
+ * poll error (a `TransportError`, or a warmup `VerusRpcError`) is attached as
+ * `cause`. The operation may still complete on the daemon — check the opid
+ * before retrying the send.
  */
 export class OperationTimeoutError extends Error {
   readonly opid: string;

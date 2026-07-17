@@ -1,4 +1,11 @@
-import { OperationFailedError, OperationTimeoutError, ResponseMappingError, TransportError } from "../errors.js";
+import {
+  OperationFailedError,
+  OperationTimeoutError,
+  ResponseMappingError,
+  RpcErrorCode,
+  TransportError,
+  VerusRpcError,
+} from "../errors.js";
 import type { OperationStatus } from "./wallet.js";
 
 export function sleep(ms: number): Promise<void> {
@@ -26,10 +33,13 @@ export function requireTxid(status: OperationStatus): string {
  *
  * `fetchStatus` performs one z_getoperationstatus round-trip and returns the
  * matching entry (or undefined while the daemon has not listed it yet).
- * Transient transport failures are tolerated until the deadline — the
- * operation is already in flight and must not be abandoned — but "auth"
- * (bad credentials) and "aborted" (deliberate cancel) cannot recover by
- * re-polling and fail immediately.
+ * Transient failures are tolerated until the deadline — the operation is
+ * already in flight and must not be abandoned, and re-driving the whole send
+ * on a poll error would double-spend. Tolerated: any non-auth/non-aborted
+ * transport failure, plus the daemon's warmup window (`RPC_IN_WARMUP`, e.g. a
+ * mid-poll daemon restart). "auth" (bad credentials), "aborted" (deliberate
+ * cancel), and any other daemon error cannot recover by re-polling and fail
+ * immediately.
  */
 export async function pollOperation(
   fetchStatus: () => Promise<OperationStatus | undefined>,
@@ -37,14 +47,17 @@ export async function pollOperation(
   timing: { intervalMs: number; timeoutMs: number },
 ): Promise<OperationStatus> {
   const deadline = Date.now() + timing.timeoutMs;
-  let lastPollError: TransportError | undefined;
+  let lastPollError: TransportError | VerusRpcError | undefined;
   for (;;) {
     let status: OperationStatus | undefined;
     try {
       status = await fetchStatus();
       lastPollError = undefined;
     } catch (err) {
-      if (!(err instanceof TransportError) || err.reason === "auth" || err.reason === "aborted") throw err;
+      const transient =
+        (err instanceof TransportError && err.reason !== "auth" && err.reason !== "aborted") ||
+        (err instanceof VerusRpcError && err.code === RpcErrorCode.RPC_IN_WARMUP);
+      if (!transient) throw err;
       lastPollError = err;
     }
     if (status !== undefined) {
