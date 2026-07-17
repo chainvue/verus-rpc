@@ -73,13 +73,25 @@ daemon answers `INCOMPLETE`. No client-side signing lives here by design.
 await client.blockchain.estimateFee({ blocks: 6 }); // string | null
 await client.blockchain.getRawMempool({ verbose: true });
 await client.blockchain.getMempoolInfo();
-await client.blockchain.getTxOut({ txid, vout: 0 });
+await client.blockchain.getTxOut({ txid, vout: 0 }); // T1 — value is bigint sats
 await client.blockchain.getVdxfId({ name: "vrsc::system.currency.export" });
 await client.blockchain.validateAddress({ address: "R…" });
 ```
 
 `estimateFee` returns `null` when the daemon has insufficient data — it
 answers with a `-1` sentinel, and a real fee-per-kB is never negative.
+
+`getTxOut` is T1: `value` is bigint sats, and `null` means the output is spent
+or unknown. `listUnspent().amount` and `getAddressUtxos().satoshis` are the
+same type for the same output — one concept, one type, across all three. The
+`getTxOut`/`getAddressUtxos` agreement is pinned by a fixture assertion on a
+shared mainnet output; the `listUnspent` leg is covered by its own fixture
+rather than a joint one (it is a wallet method, so no recording can hold the
+same output as a public-gateway one). `interest` (Komodo heritage) appears only when
+non-zero and is bigint sats too.
+
+`getNetworkInfo` stays T2 and carries an untyped `relayfee` passthrough; for
+that field as bigint sats use `client.chain.getInfo().relayfee`.
 
 ## `verifyChain` — read the positional trap
 

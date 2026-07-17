@@ -43,9 +43,11 @@ export {
 export {
   BlockchainApi,
   mapCoinSupply,
+  mapGetTxOut,
   mapGetVdxfId,
   type CoinSupplyResult,
   type CreateRawTransactionInput,
+  type GetTxOutResult,
   type GetVdxfIdResult,
   type RawTransactionOptions,
 } from "./methods/blockchain.js";

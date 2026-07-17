@@ -98,3 +98,33 @@ sensitive). Review the diff before committing.
 
 With no env flags, `pnpm test` runs only the offline suite — both live suites
 skip. CI never sets the flags, so it never spends or reaches a daemon.
+
+## Recording fixtures
+
+`fixtures/` holds real daemon responses; `test/fixtures.test.ts` replays them
+offline and **enforces** that every exported T1 mapper has one. To record:
+
+```bash
+# read surface — no funds move
+node scripts/record-fixtures.mjs reads
+
+# the one dust transaction that closes sendcurrency + z_getoperationstatus
+VERUS_RPC_ALLOW_SPEND=1 node scripts/record-fixtures.mjs spend
+```
+
+The spend recipe refuses a non-testnet chain, sends `0.0001` to an address it
+obtains from `getnewaddress` — i.e. back into the same wallet — and only the
+miner fee actually leaves.
+
+The recorder talks **raw HTTP** rather than going through the client, and that
+is deliberate: `DaemonTransport` consumes `response.text()` and returns only
+the parsed `result`, so no code above it can see the bytes; and the harness's
+`writeArtifacts` runs captures through `toSafeNumbers`, which turns
+`0.00010000` into the string `"0.00010000"` — feed that back as a fixture and
+`mapAmount` rejects it. `test-artifacts/` is for debugging, never a fixture
+source.
+
+After recording, review the diff: truncate large bodies (with the package's
+own lossless writer — `JSON.stringify` would rewrite `6.00000000` to `6.0`),
+scrub anything wallet-unique, and record what you did in the
+`fixtures/README.md` table.

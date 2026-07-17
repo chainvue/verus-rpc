@@ -17,7 +17,7 @@ import {
   mapCurrencyState,
 } from "../src/methods/currency.js";
 import { mapAddressBalance, mapAddressDelta, mapAddressUtxo } from "../src/methods/addressindex.js";
-import { mapCoinSupply, mapGetVdxfId } from "../src/methods/blockchain.js";
+import { mapCoinSupply, mapGetTxOut, mapGetVdxfId } from "../src/methods/blockchain.js";
 import {
   mapGetIdentity,
   mapIdentityDefinition,
@@ -82,30 +82,37 @@ describe("fixture conformance", () => {
     expect(mapCurrencyBalance(fixtureResult("getcurrencybalance.json"))).toEqual({ VRSCTEST: 200_000_000n });
   });
 
-  it("getbalance (synthetic)", () => {
+  it("getbalance (recorded VRSCTEST)", () => {
     expect(mapAmount(fixtureResult("getbalance.json"), { method: "getbalance", field: "(result)" })).toBe(
-      200_000_000n,
+      747_000_791_611n,
     );
   });
 
-  it("gettransaction (synthetic)", () => {
+  it("gettransaction (recorded VRSCTEST) — a real outgoing send, signed at every level", () => {
     const tx = mapGetTransaction(fixtureResult("gettransaction.json"));
-    expect(tx.amount).toBe(-10_000_000n);
+    // A genuine send OUT of the wallet, not a self-send: a self-send nets to
+    // 0.00000000, which maps identically with or without mapAmount's
+    // `signed` flag and would pin nothing.
+    expect(tx.amount).toBe(-10_000n);
     expect(tx.fee).toBe(-10_000n);
-    expect(tx.details[0]!.amount).toBe(-10_000_000n);
+    expect(tx.details[0]!.amount).toBe(-10_000n);
+    expect(tx.details[0]!.category).toBe("send");
   });
 
-  it("sendcurrency (synthetic)", () => {
+  it("sendcurrency (recorded VRSCTEST dust send)", () => {
     const opid = mapString(fixtureResult("sendcurrency.json"), { method: "sendcurrency", field: "(result)" });
     expect(opid.startsWith("opid-")).toBe(true);
   });
 
-  it("z_getoperationstatus (synthetic)", () => {
+  it("z_getoperationstatus (recorded, the same dust send) — fractional passthrough stays exact", () => {
     const result = fixtureResult("z_getoperationstatus.json") as unknown[];
     const status = mapOperationStatus(result[0], 0);
     expect(status.status).toBe("success");
-    expect(status.result?.txid).toBeTypeOf("string");
-    expect(status["execution_secs"]).toBe("0.037381236"); // fractional passthrough → exact string
+    expect(status.result?.txid).toHaveLength(64);
+    expect(status.method).toBe("sendcurrency");
+    // The daemon's real float-shaped timing token must survive verbatim — this
+    // is exactly the value JSON.parse would round.
+    expect(status["execution_secs"]).toBe("0.06622409899999999");
   });
 
   it("getidentitycontent (recorded, mainnet)", () => {
@@ -130,39 +137,52 @@ describe("fixture conformance", () => {
     expect(identities[0]!.primaryaddresses).toContain("REpxm9bCLMiHRNVPA9unPBWixie7uHFA5C");
   });
 
-  it("listunspent (synthetic)", () => {
+  it("listunspent (recorded VRSCTEST) — amounts bigint, currencyvalues passthrough exact", () => {
     const result = fixtureResult("listunspent.json") as unknown[];
     const utxos = result.map((item, i) => mapUnspentOutput(item, i));
-    expect(utxos[0]!.amount).toBe(200_000_000n);
-    expect(utxos[1]!.amount).toBe(1n); // dust
-    expect(utxos[0]!["interest"]).toBe("0.00000000"); // unknown value field stays exact
+    // Two distinct magnitudes on purpose: dust, and a whole-coin entry.
+    expect(utxos[0]!.amount).toBe(10_000n);
+    expect(utxos[1]!.amount).toBe(600_000_000n);
+    // currencyvalues is NOT curated (it appears nowhere in src/) — it passes
+    // through as an exact decimal string and must still agree with `amount`.
+    const cv = utxos[1]!["currencyvalues"] as Record<string, unknown>;
+    const [reserve] = Object.values(cv);
+    expect(reserve).toBe("6.00000000");
+    expect(parseAmount(String(reserve))).toBe(utxos[1]!.amount);
   });
 
-  it("listtransactions (synthetic)", () => {
+  it("listtransactions (recorded VRSCTEST) — a real receive and a real signed send", () => {
     const result = fixtureResult("listtransactions.json") as unknown[];
     const txs = result.map((item, i) => mapListedTransaction(item, i));
-    expect(txs[0]!.amount).toBe(200_000_000n);
-    expect(txs[1]!.amount).toBe(-10_000_000n);
-    expect(txs[1]!.fee).toBe(-10_000n);
+    expect(txs[0]!.category).toBe("receive");
+    expect(txs[0]!.amount).toBe(7_743_077_217n);
+    expect(txs[1]!.category).toBe("send");
+    expect(txs[1]!.amount).toBe(-7_743_077_217n);
+    expect(txs[1]!.fee).toBe(-2_500_000_000n);
   });
 
-  it("getwalletinfo (synthetic)", () => {
+  it("getwalletinfo (recorded VRSCTEST, seedfp + currency names scrubbed)", () => {
     const info = mapGetWalletInfo(fixtureResult("getwalletinfo.json"));
-    expect(info.balance).toBe(210_000_000n);
+    expect(info.balance).toBe(747_000_791_611n);
     expect(info.paytxfee).toBe(10_000n);
-    expect(info["eligible_staking_balance"]).toBe("0.00000000");
+    // Verus staking passthrough — a value field the mapper does not curate.
+    expect(info["eligible_staking_balance"]).toBe("7469.99752471");
+    // Scrubbed, but the shape must still be the daemon's.
+    expect(info.seedfp).toBe("0".repeat(64));
   });
 
-  it("listaddressgroupings (synthetic)", () => {
+  it("listaddressgroupings (recorded VRSCTEST, truncated) — 2-tuple and 3-tuple both map", () => {
     const groups = mapAddressGroupings(fixtureResult("listaddressgroupings.json"));
-    expect(groups[0]![0]!.amount).toBe(200_000_000n);
-    expect(groups[1]![0]!.amount).toBe(0n);
+    expect(groups[0]![0]!.amount).toBe(0n);
+    expect(groups[0]![0]!.account).toBeUndefined(); // 2-tuple: no account slot
+    expect(groups[0]![1]!.account).toBe(""); // 3-tuple: present but empty
+    expect(groups[1]![0]!.amount).toBe(600_000_000n);
   });
 
-  it("signmessage (synthetic)", () => {
+  it("signmessage (recorded VRSCTEST) — {hash, signature}, not a bare string", () => {
     const result = mapSignMessage(fixtureResult("signmessage.json"));
-    expect(result.hash.length).toBeGreaterThan(0);
-    expect(result.signature.length).toBeGreaterThan(0);
+    expect(result.hash).toHaveLength(64);
+    expect(result.signature).toMatch(/^[A-Za-z0-9+/]+=*$/); // base64
   });
 
   it("getcurrency (recorded, mainnet)", () => {
@@ -222,6 +242,26 @@ describe("fixture conformance", () => {
     // Decimal currency values map to the same bigint as the sat-int fields.
     expect(result.currencybalance!["i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV"]).toBe(result.balance);
     expect(result.currencyreceived!["i5w5MuNik5NtLcYmNzcvaoixooEebB6MGV"]).toBe(result.received);
+  });
+
+  it("gettxout (recorded, mainnet) — one value, three methods, one bigint", () => {
+    const txout = mapGetTxOut(fixtureResult("gettxout.json"));
+    expect(txout.value).toBe(1_013_218n);
+    expect(txout.coinbase).toBe(false);
+    expect(txout.confirmations).toBeGreaterThan(0);
+    expect(txout.bestblock).toHaveLength(64);
+    // The daemon omits `interest` unless it is non-zero — absent must stay
+    // absent rather than become 0n.
+    expect(txout.interest).toBeUndefined();
+    // scriptPubKey is a nested object the mapper does not curate.
+    expect((txout["scriptPubKey"] as Record<string, unknown>)["type"]).toBe("pubkeyhash");
+
+    // The load-bearing assertion: this is the SAME mainnet output that
+    // getaddressutxos.json carries as a satoshi integer and
+    // getaddressdeltas.json as an 8-decimal token. All three must agree — that
+    // agreement is the whole point of promoting gettxout to T1.
+    const utxo = (fixtureResult("getaddressutxos.json") as unknown[])[1];
+    expect(txout.value).toBe(mapAddressUtxo(utxo, 1).satoshis);
   });
 
   it("getblocksubsidy (recorded, mainnet) — T2 single-decimal token stays exact", () => {
