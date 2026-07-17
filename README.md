@@ -60,12 +60,13 @@ op-id — the `…AndWait` helpers poll it to the txid for you.
 
 | Namespace | Highlights |
 |---|---|
-| `chain` / `blockchain` | `getInfo`, `getBlockCount`, `getBlock`, `getBlockchainInfo` |
+| `chain` | `getInfo`, `getBlockCount` — and only those two |
+| `blockchain` | `getBlock`, `getBlockchainInfo`, `getBlockHash`, `coinSupply`, raw-tx: `createRawTransaction`, `decodeRawTransaction`, `sendRawTransaction` |
 | `wallet` | `getBalance`, `getCurrencyBalance`, `listUnspent`, `listTransactions`, `sendCurrencyAndWait`, `sendMany` |
 | `identity` | `getIdentity`, `getIdentityHistory`, `registerIdentityFlow` (commit/reveal), `updateIdentity`, `revokeIdentity`, `recoverIdentity`, `signData` |
 | `currency` | `getCurrency`, `listCurrencies`, `estimateConversion`; marketplace: `makeOffer`, `takeOffer`, `getOffers` |
 | `shielded` | the `z_*` family: `zGetTotalBalance`, `zSendManyAndWait` |
-| `addressIndex` | `getAddressBalance`, `getAddressUtxos` — any address, not just yours |
+| `addressIndex` | `getAddressBalance`, `getAddressUtxos`, `getAddressDeltas`, `getSpentInfo` — any address, not just yours |
 
 **Escape hatch:** `client.call("anymethod", [args])` reaches every daemon
 method, typed or not.
@@ -103,10 +104,10 @@ deadline hit surfaces the last poll failure as `cause`.
   const mock = new MockTransport().respondJson("getblockcount", "42");
   new VerusClient({ transport: mock }); // .chain.getBlockCount() → 42
   ```
-- **Resilience (opt-in)** — `resilience: { timeoutMs, breaker: { failuresBeforeOpen } }`; a policy timeout aborts the in-flight HTTP request (no orphaned sends). Daemon-level errors, auth failures, and caller aborts never trip the breaker.
+- **Resilience (opt-in)** — `resilience: { timeoutMs, breaker: { failuresBeforeOpen } }`; a policy timeout aborts the in-flight HTTP request (no orphaned sends). Daemon-level errors, auth failures, and caller aborts never trip the breaker. Note the two timeouts differ: the plain transport allows **60s**, the resilience policy **10s** — so opting in tightens your effective deadline unless you set `resilience.timeoutMs` yourself.
 - **Cancellation** — `call(method, params, { signal })` aborts the in-flight request (`TransportError`, reason `"aborted"`).
 - Node ≥ 22, no `Buffer`/`fs` in the client path. Typed against daemon **v1.2.17**; unknown fields from newer daemons pass through untouched.
 - Deliberately transport + types only — no client-side signing or tx construction (that's [`@chainvue/verus-sdk`](https://www.npmjs.com/package/@chainvue/verus-sdk) / `verusid-ts-client`).
-- More depth per area in [`docs/`](./docs); runnable scripts in [`examples/`](./examples).
+- More depth per area in [`docs/`](./docs); runnable scripts in [`examples/`](./examples) (`pnpm i` builds first, then `node --experimental-strip-types examples/block-height.ts`).
 
 Apache-2.0 · Copyright 2026 Robert Lech · see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).

@@ -1,7 +1,7 @@
 # Live testing against a daemon
 
-Two gated suites exercise the client against a **real** `verusd`. Neither runs
-in CI — they only activate when you set the env flags below. Together they are
+Three gated suites exercise the client against **real** endpoints. None run in
+CI — they only activate when you set the env flags below. Together they are
 the **post-release breaking-change check**: run them after a new `verus-cli`
 release; if a daemon response shape changed, a curated mapper throws
 `ResponseMappingError` naming the exact method and field.
@@ -10,6 +10,16 @@ release; if a daemon response shape changed, a curated mapper throws
 |---|---|---|---|
 | Read sweep | `test/integration.test.ts` | `VERUS_RPC_URL` | No |
 | Write harness | `test/spend.integration.test.ts` | `VERUS_RPC_URL` + `VERUS_RPC_ALLOW_SPEND=1` | **Yes (dust, VRSCTEST)** |
+| Public gateway | `test/public-node.integration.test.ts` | `VERUS_RPC_PUBLIC_URL` | No |
+
+Two further env flags, both optional and read outside the table above:
+
+- `VERUS_RPC_MAINNET_SMOKE=1` — adds a read-only shape smoke against mainnet
+  to the read sweep (`test/integration.test.ts`) and runs the examples live
+  (`test/examples.test.ts`).
+- `VERUS_RPC_PUBLIC_URL` — the credential-less gateway suite; it pins which
+  methods a public node actually serves (e.g. `getspentinfo` yes,
+  `coinsupply` no).
 
 ## 1. Point at your node
 
@@ -48,7 +58,7 @@ daemon name + version is printed at the top for your release log.
 ```bash
 export VERUS_RPC_ALLOW_SPEND=1
 pnpm test test/spend.integration.test.ts
-# or both suites:  pnpm test:live
+# or all three gated suites:  pnpm test:live
 ```
 
 Runs, in order, on **VRSCTEST only** (it aborts if the chain reports
