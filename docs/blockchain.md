@@ -19,7 +19,8 @@ Everything else chain-shaped is on `client.blockchain`.
 ```ts
 const hash = await client.blockchain.getBlockHash(3_634_845); // positional number
 await client.blockchain.getBlock({ hashOrHeight: hash, verbosity: 1 });
-await client.blockchain.getBlockHeader({ hash });             // verbose:false → raw hex
+await client.blockchain.getBlockHeader({ hash });                  // verbose defaults true → object
+await client.blockchain.getBlockHeader({ hash, verbose: false }); // → raw hex string
 await client.blockchain.getBestBlockHash();
 await client.blockchain.getBlockchainInfo();
 await client.blockchain.getChainTips();

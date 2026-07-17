@@ -29,7 +29,10 @@ ask otherwise.
 ## What is in scope
 
 This package is transport + types. It speaks JSON-RPC to a daemon; it holds
-no keys, signs nothing, and constructs no transactions. In scope:
+no keys, signs nothing, and builds no transaction bytes — the daemon does
+that. It does, however, serialize the amounts that go into
+`createrawtransaction`, converting bigint satoshis to the coins the daemon
+expects: that conversion is client-side and firmly **in scope**. In scope:
 
 - **Amount correctness** — anything that makes a value field lose precision or
   surface as a float, or that sends a wrong amount to the daemon. This is the

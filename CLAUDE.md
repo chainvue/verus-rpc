@@ -2,9 +2,8 @@
 
 A **precision-honest** TypeScript client for the Verus (`verusd`) JSON-RPC
 interface — daemon-first, npm-published. Every daemon method is reachable via
-`call()`; the common surface is curated with precise types. It is deliberately
-**not** billed as "full-coverage" — that claim was dropped in a1b141b after a
-source audit against the daemon's dispatch tables. This is the
+`call()`; the common surface is curated with precise types. Do **not** bill it
+as "full-coverage". This is the
 general-purpose Verus client (distinct from v402's deliberately minimal,
 in-repo `@chainvue/v402-verus-rpc`). Published as `@chainvue/verus-rpc` (renamed
 from the unscoped `verus-rpc`, 2026-07-15).

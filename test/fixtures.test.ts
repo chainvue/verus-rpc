@@ -311,15 +311,12 @@ describe("fixture conformance", () => {
 });
 
 /**
- * Enforcement for the rule in .github/PULL_REQUEST_TEMPLATE.md: "T1 methods
- * ship a fixture in fixtures/ and a conformance assertion in
- * test/fixtures.test.ts."
+ * Enforces the rule in .github/PULL_REQUEST_TEMPLATE.md: "T1 methods ship a
+ * fixture in fixtures/ and a conformance assertion in test/fixtures.test.ts."
  *
- * That rule lived only in a checklist, and three mappers (mapAddressUtxo,
- * mapAddressDelta, mapNameCommitment) had quietly shipped without one. A
- * checkbox does not hold; this does. A mapper that genuinely cannot have a
- * fixture must be listed below WITH a reason, so the exception is a decision
- * on the record rather than an omission.
+ * A mapper that genuinely cannot have a fixture must be listed below WITH a
+ * reason, so an exception is a decision on the record rather than an
+ * omission.
  */
 describe("T1 fixture rule", () => {
   const WITHOUT_FIXTURE: Record<string, string> = {

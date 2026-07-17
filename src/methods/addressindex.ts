@@ -81,9 +81,6 @@ function mapCurrencyAmounts(
   const out: Record<string, bigint> = {};
   for (const [currency, value] of Object.entries(obj)) {
     const ctx: FieldContext = { method, field: `${field}.${currency}` };
-    // mapAmount, not a hand-rolled parseAmount: it converts a malformed value
-    // into a ResponseMappingError naming method+field, like every other
-    // amount field in the library.
     out[currency] = mapAmount(value, ctx, { signed: true });
   }
   return out;

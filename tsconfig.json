@@ -12,8 +12,6 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
-    // Each of these was enabled in isolation and measured at 0 errors before
-    // being turned on.
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,

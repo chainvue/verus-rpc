@@ -12,14 +12,13 @@ release; if a daemon response shape changed, a curated mapper throws
 | Write harness | `test/spend.integration.test.ts` | `VERUS_RPC_URL` + `VERUS_RPC_ALLOW_SPEND=1` | **Yes (dust, VRSCTEST)** |
 | Public gateway | `test/public-node.integration.test.ts` | `VERUS_RPC_PUBLIC_URL` | No |
 
-Two further env flags, both optional and read outside the table above:
+The public-gateway suite needs no credentials — it exists to pin which
+methods a public node actually serves (e.g. `getspentinfo` yes, `coinsupply`
+no). One further optional flag, orthogonal to the table:
 
 - `VERUS_RPC_MAINNET_SMOKE=1` — adds a read-only shape smoke against mainnet
   to the read sweep (`test/integration.test.ts`) and runs the examples live
   (`test/examples.test.ts`).
-- `VERUS_RPC_PUBLIC_URL` — the credential-less gateway suite; it pins which
-  methods a public node actually serves (e.g. `getspentinfo` yes,
-  `coinsupply` no).
 
 ## 1. Point at your node
 
