@@ -5,17 +5,27 @@ field.** This page is the mental model.
 
 ## Why
 
-`verusd` returns amounts as JSON decimal numbers. Two failure modes make
-naive `JSON.parse` unsafe:
+`verusd` returns amounts as JSON decimal numbers. Run them through
+`JSON.parse` and two things go wrong:
 
-1. **Arithmetic on floats** — `0.1 + 0.2 !== 0.3` in float64.
-2. **Integers beyond 2^53** — Verus max supply (~83.5M coins ≈ 8.35e15 sats)
-   is close enough to `Number.MAX_SAFE_INTEGER` (9.007e15) that satoshi-scale
-   integers can silently lose precision.
+1. **Float arithmetic is lossy at any magnitude.** `0.1 + 0.2 !== 0.3` in
+   float64. The moment you add, subtract, or scale a parsed amount, the result
+   can be off by a satoshi — silently, with no error.
 
-Mainnet even sends `relayfee` as `1e-6`. The transport parses the body
-losslessly, so a number literal reaches a mapper as an exact decimal string,
-never a float.
+2. **Large token amounts exceed float64's exact-integer range.** A JSON number
+   holds integers exactly only up to `2^53` sats (`90_071_992.54740992`
+   coins). VRSC's own max supply (~83.5M coins) sits *just under* that line, so
+   a VRSC balance happens to survive a `JSON.parse` round-trip unrounded — but
+   that is luck, not safety. A PBaaS currency can carry far more: the token
+   amount `21000000000.12345678` loses **78 satoshis** through `JSON.parse`
+   (`2100000000012345678` → `…345600`). Precisely because this client keeps
+   sats exact by construction, it is the right choice for the large-supply
+   tokens where naive parsing quietly breaks.
+
+Even the wire form resists a round-trip: mainnet sends `relayfee` as `1e-6`,
+balances carry trailing zeros. The transport parses the body losslessly, so a
+number literal reaches a mapper as an exact decimal string — never a float —
+and curated methods turn it into `bigint` sats.
 
 ## The three surfaces
 

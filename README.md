@@ -53,6 +53,27 @@ parseAmount("1.5");                               // 150_000_000n
 Sending an amount through the untyped `call()` escape hatch? `amountParam(sats)`
 produces the exact number token the daemon expects — never a float.
 
+## Why this client
+
+Most Verus RPC code is a hand-rolled `fetch` + `JSON.parse` wrapper. That holds
+until an amount crosses float64's exact-integer range (`2^53` sats, ≈ 90M
+coins). A VRSC balance sits just under that line and survives by luck; a
+large-supply PBaaS token routinely sits above it, and there `JSON.parse`
+silently drops satoshis — e.g. `21000000000.12345678` loses 78 of them.
+
+| | `@chainvue/verus-rpc` | hand-rolled `fetch` + `JSON.parse` |
+|---|---|---|
+| Amounts | `bigint` satoshis, exact at any supply | float64 — silent rounding past `2^53` sats |
+| Surface | curated types for the common methods, plus `call()` for every RPC | untyped, per call |
+| Wire quirks | lossless — `1e-6` and trailing zeros survive verbatim | rewritten by `JSON.parse` |
+| Verified | asserted offline against recorded real daemon responses (mainnet + VRSCTEST) | — |
+| Errors | typed by kind (`VerusRpcError` / `TransportError.reason`) | raw throw |
+
+It is transport + types only — for key material, signing, and transaction
+construction pair it with
+[`verusid-ts-client`](https://github.com/VerusCoin/verusid-ts-client) or
+[`@chainvue/verus-sdk`](https://www.npmjs.com/package/@chainvue/verus-sdk).
+
 ## What's on the client
 
 Everything hangs off a namespace. Async sends (`sendcurrency`, `z_*`) return an
