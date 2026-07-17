@@ -48,7 +48,8 @@ async function api(path) {
 
 async function raw(path, atRef) {
   const res = await fetch(`https://raw.githubusercontent.com/${REPO}/${atRef}/${path}`);
-  if (!res.ok) throw new Error(`raw ${path}@${atRef}: HTTP ${res.status}`);
+  if (res.status === 404) return null; // genuinely absent at this ref (moved/renamed)
+  if (!res.ok) throw new Error(`raw ${path}@${atRef}: HTTP ${res.status}`); // 5xx/rate-limit: fail loud
   return res.text();
 }
 
@@ -66,31 +67,33 @@ async function daemonCommands(atRef) {
   files.push("src/wallet/rpcwallet.cpp"); // command table lives outside src/rpc
   const commands = {};
   for (const path of files) {
-    let text;
-    try {
-      text = await raw(path, atRef);
-    } catch {
-      continue; // a file that moved between versions is not fatal
-    }
+    const text = await raw(path, atRef); // 5xx/rate-limit throws (fail loud); 404 → null
+    if (text === null) continue;
     for (const m of text.matchAll(ENTRY_RE)) {
       const [, category, name] = m;
-      // First registration wins; a name never legitimately changes category.
-      if (!(name in commands)) commands[name] = category;
+      // A few names register under two categories (e.g. invalidateblock as both
+      // "hidden" and "util"); the first wins. Only the category LABEL is
+      // affected — drift detection keys on the name.
+      if (!Object.hasOwn(commands, name)) commands[name] = category;
     }
   }
   return commands;
 }
 
 /**
- * Daemon method names this client actually calls — the first string argument
- * to `transport.request(...)` / `requestT2(transport, ...)`. Used only to
- * escalate a REMOVED command into a breaking change.
+ * Every lowercase string literal in the client's method modules. Intersected
+ * with the daemon command set to escalate a REMOVED command into a breaking
+ * change. Matching literals broadly (not just the `request("…")` argument) is
+ * deliberate: the identity/currency methods dispatch through a `const method`
+ * or a helper, so a narrow call-site regex misses exactly the churn-prone
+ * methods. Over-capturing an unrelated literal is the safe direction — at worst
+ * it over-flags a breaking removal; it can never hide one.
  */
-function clientUsedCommands() {
-  const used = new Set();
+function clientCommandLiterals() {
+  const literals = new Set();
   const methodsDir = join(ROOT, "src", "methods");
   const files = [join(ROOT, "src", "client.ts"), ...readdirSync(methodsDir).map((f) => join(methodsDir, f))];
-  const patterns = [/\.request\(\s*"([a-z0-9_]+)"/g, /requestT2\(\s*this\.transport\s*,\s*"([a-z0-9_]+)"/g];
+  const RE = /"([a-z][a-z0-9_]*)"/g;
   for (const file of files) {
     let src;
     try {
@@ -98,9 +101,9 @@ function clientUsedCommands() {
     } catch {
       continue;
     }
-    for (const re of patterns) for (const m of src.matchAll(re)) used.add(m[1]);
+    for (const m of src.matchAll(RE)) literals.add(m[1]);
   }
-  return used;
+  return literals;
 }
 
 function loadBaseline() {
@@ -132,10 +135,10 @@ async function main() {
     throw new Error(`no baseline at ${BASELINE_PATH} — seed one with --update-baseline`);
   }
   const baseNames = new Set(Object.keys(baseline.commands));
-  const used = clientUsedCommands();
+  const used = clientCommandLiterals();
 
   const added = latestNames.filter((n) => !baseNames.has(n));
-  const removed = [...baseNames].filter((n) => !(n in latest)).sort();
+  const removed = [...baseNames].filter((n) => !Object.hasOwn(latest, n)).sort();
   const removedBreaking = removed.filter((n) => used.has(n));
 
   const drift = ref !== baseline.verusRef && (added.length > 0 || removed.length > 0);

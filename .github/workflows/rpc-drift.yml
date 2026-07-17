@@ -39,12 +39,13 @@ jobs:
             exit 0
           fi
           node -e 'require("fs").writeFileSync("drift-body.md", require("./drift.json").report)'
-          num=$(gh issue list --state open --search 'in:title RPC command drift' --json number --jq '.[0].number // empty')
+          gh label create rpc-drift --color BFD4F2 --description "Daemon RPC command set drift" 2>/dev/null || true
+          num=$(gh issue list --state open --label rpc-drift --json number --jq '.[0].number // empty')
           if [ -n "$num" ]; then
             gh issue edit "$num" --body-file drift-body.md
             gh issue comment "$num" --body "Re-checked on $(date -u +%F) — drift still present."
             echo "Updated issue #$num"
           else
-            gh issue create --title "RPC command drift detected" --body-file drift-body.md
+            gh issue create --title "RPC command drift detected" --body-file drift-body.md --label rpc-drift
             echo "Opened a new drift issue"
           fi
