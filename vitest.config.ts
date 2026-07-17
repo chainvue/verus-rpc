@@ -13,10 +13,10 @@ export default defineConfig({
       // flake, tight enough to catch a real regression. Re-measure and raise
       // them when coverage rises — floors left behind stop gating anything.
       thresholds: {
-        statements: 82,
-        branches: 68,
-        functions: 85,
-        lines: 87,
+        statements: 86,
+        branches: 72,
+        functions: 88,
+        lines: 90,
       },
     },
   },

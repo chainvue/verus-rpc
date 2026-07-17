@@ -4,6 +4,7 @@ import { isLosslessNumber } from "../lossless.js";
 import {
   expectObject,
   mapAmount,
+  mapAmountOptional,
   mapBoolean,
   mapInt,
   mapString,
@@ -116,6 +117,37 @@ export function mapCoinSupply(raw: unknown): CoinSupplyResult {
   });
 }
 
+/** Result of `gettxout` — one unspent output. */
+export interface GetTxOutResult {
+  /** Hash of the block this view is against. */
+  bestblock: string;
+  /** 0 while the output is only in the mempool. */
+  confirmations: number;
+  /** Output value — bigint sats. */
+  value: bigint;
+  /**
+   * Komodo-heritage accrued interest — bigint sats. The daemon pushes this
+   * field only when it is non-zero, and its own help text does not document
+   * it (verified against v1.2.17 source).
+   */
+  interest?: bigint | undefined;
+  coinbase: boolean;
+  [key: string]: unknown;
+}
+
+export function mapGetTxOut(raw: unknown): GetTxOutResult {
+  const method = "gettxout";
+  const obj = expectObject(raw, method);
+  const ctx = (field: string): FieldContext => ({ method, field });
+  return withPassthrough<GetTxOutResult>(obj, {
+    bestblock: mapString(obj["bestblock"], ctx("bestblock")),
+    confirmations: mapInt(obj["confirmations"], ctx("confirmations")),
+    value: mapAmount(obj["value"], ctx("value")),
+    interest: mapAmountOptional(obj["interest"], ctx("interest")),
+    coinbase: mapBoolean(obj["coinbase"], ctx("coinbase")),
+  });
+}
+
 /** Blockchain and general reads + raw-transaction chain. */
 export class BlockchainApi {
   constructor(private readonly transport: RpcTransport) {}
@@ -194,16 +226,23 @@ export class BlockchainApi {
     return requestT2(this.transport, "getrawtransaction", params);
   }
 
-  /** UTXO details (null if spent/unknown). T2 — value as decimal string. */
+  /**
+   * One unspent output's detail, or `null` when it is spent or unknown. T1 —
+   * `value` is bigint sats, matching `listUnspent().amount` and
+   * `getAddressUtxos().satoshis`; the same output read through any of the
+   * three now gives the same type.
+   */
   async getTxOut(options: {
     txid: string;
     vout: number;
     includeMempool?: boolean;
-  }): Promise<Record<string, unknown> | null> {
+  }): Promise<GetTxOutResult | null> {
     const params: unknown[] = [options.txid, options.vout];
     if (options.includeMempool !== undefined) params.push(options.includeMempool);
-    const result = await requestT2<Record<string, unknown> | null>(this.transport, "gettxout", params);
-    return result ?? null;
+    const raw = await this.transport.request("gettxout", params);
+    // The daemon answers a bare null for spent/unknown outputs — short-circuit
+    // before mapping, or expectObject would turn "unspent? no" into an error.
+    return raw === null || raw === undefined ? null : mapGetTxOut(raw);
   }
 
   /**
@@ -250,7 +289,11 @@ export class BlockchainApi {
     return requestT2(this.transport, "getpeerinfo", []);
   }
 
-  /** P2P/network summary. T2. */
+  /**
+   * P2P/network summary. T2 — including its `relayfee`, which stays an
+   * untyped passthrough here. `client.chain.getInfo().relayfee` is the same
+   * daemon field curated as bigint sats; prefer that one for arithmetic.
+   */
   async getNetworkInfo(): Promise<Record<string, unknown>> {
     return requestT2(this.transport, "getnetworkinfo", []);
   }

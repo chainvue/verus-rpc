@@ -73,13 +73,22 @@ daemon answers `INCOMPLETE`. No client-side signing lives here by design.
 await client.blockchain.estimateFee({ blocks: 6 }); // string | null
 await client.blockchain.getRawMempool({ verbose: true });
 await client.blockchain.getMempoolInfo();
-await client.blockchain.getTxOut({ txid, vout: 0 });
+await client.blockchain.getTxOut({ txid, vout: 0 }); // T1 — value is bigint sats
 await client.blockchain.getVdxfId({ name: "vrsc::system.currency.export" });
 await client.blockchain.validateAddress({ address: "R…" });
 ```
 
 `estimateFee` returns `null` when the daemon has insufficient data — it
 answers with a `-1` sentinel, and a real fee-per-kB is never negative.
+
+`getTxOut` is T1: `value` is bigint sats, and `null` means the output is spent
+or unknown. The same output read through `listUnspent().amount` or
+`getAddressUtxos().satoshis` gives the identical bigint — that agreement is
+pinned by a fixture assertion. `interest` (Komodo heritage) appears only when
+non-zero and is bigint sats too.
+
+`getNetworkInfo` stays T2 and carries an untyped `relayfee` passthrough; for
+that field as bigint sats use `client.chain.getInfo().relayfee`.
 
 ## `verifyChain` — read the positional trap
 
