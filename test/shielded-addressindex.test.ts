@@ -21,6 +21,18 @@ describe("ShieldedApi", () => {
     });
   });
 
+  it("zGetTotalBalance: a field the daemon omits stays absent, never the string 'undefined'", async () => {
+    // decimalString(undefined) would materialize the literal "undefined" as a
+    // balance, hiding the drift the tier exists to surface. An absent field
+    // must stay absent instead.
+    const mock = new MockTransport().respondJson("z_gettotalbalance", '{"transparent":"1.00000000","total":"1.00000000"}');
+    const bal = await new ShieldedApi(mock).zGetTotalBalance();
+    expect(bal.transparent).toBe("1.00000000");
+    expect(bal.total).toBe("1.00000000");
+    expect(bal.private).toBeUndefined();
+    expect(Object.values(bal)).not.toContain("undefined");
+  });
+
   it("zSendMany serializes amounts/memo/fee losslessly", async () => {
     const mock = new MockTransport().respond("z_sendmany", "opid-z1");
     const shielded = new ShieldedApi(mock);

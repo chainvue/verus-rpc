@@ -155,6 +155,54 @@ describe("sendCurrencyAndWait", () => {
     expect((err as OperationFailedError).message).toContain("Insufficient funds");
   });
 
+  it("surfaces a failed op whose error omits message as OperationFailedError, not a shape error", async () => {
+    // The op DID fail; a missing `message` must not turn that into a
+    // ResponseMappingError that hides the failure. code stays reported.
+    const { mock, wallet } = setup();
+    mock.respond("sendcurrency", "opid-1");
+    mock.respondJson("z_getoperationstatus", '[{"id":"opid-1","status":"failed","error":{"code":-6}}]');
+
+    const err = await wallet.sendCurrencyAndWait(sendOptions).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OperationFailedError);
+    expect(err).not.toBeInstanceOf(ResponseMappingError);
+    expect((err as OperationFailedError).code).toBe(-6);
+    expect((err as OperationFailedError).message).toContain("no error message");
+  });
+
+  it("surfaces a failed op with an empty error object, code undefined, without throwing a shape error", async () => {
+    const { mock, wallet } = setup();
+    mock.respond("sendcurrency", "opid-1");
+    mock.respondJson("z_getoperationstatus", '[{"id":"opid-1","status":"failed","error":{}}]');
+
+    const err = await wallet.sendCurrencyAndWait(sendOptions).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OperationFailedError);
+    expect((err as OperationFailedError).code).toBeUndefined();
+  });
+
+  it("keeps polling through the daemon's warmup window (RPC_IN_WARMUP) — the send is in flight", async () => {
+    // A mid-poll daemon restart answers z_getoperationstatus with -28. The op
+    // is already broadcast; abandoning it would tempt a caller into a
+    // double-spending retry, so warmup is tolerated like a transport blip.
+    const { mock, wallet } = setup();
+    mock.respond("sendcurrency", "opid-1");
+    mock.respondError("z_getoperationstatus", -28, "Loading block index...");
+    mock.respondJson("z_getoperationstatus", '[{"id":"opid-1","status":"success","result":{"txid":"deadbeef"}}]');
+
+    await expect(wallet.sendCurrencyAndWait(sendOptions)).resolves.toEqual({ opid: "opid-1", txid: "deadbeef" });
+    expect(mock.calls.filter((c) => c.method === "z_getoperationstatus")).toHaveLength(2);
+  });
+
+  it("fails fast on a non-warmup daemon error while polling (only warmup is transient)", async () => {
+    const { mock, wallet } = setup();
+    mock.respond("sendcurrency", "opid-1");
+    mock.respondError("z_getoperationstatus", -8, "opid not found");
+
+    const err = await wallet.sendCurrencyAndWait(sendOptions).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(VerusRpcError);
+    expect((err as VerusRpcError).code).toBe(-8);
+    expect(mock.calls.filter((c) => c.method === "z_getoperationstatus")).toHaveLength(1);
+  });
+
   it("throws ResponseMappingError on success without a txid (shape drift — the send completed, never retry-shaped)", async () => {
     const { mock, wallet } = setup();
     mock.respond("sendcurrency", "opid-1");

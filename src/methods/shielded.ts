@@ -105,12 +105,15 @@ export class ShieldedApi {
     }
     if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
     const raw = await requestT2<Record<string, unknown>>(this.transport, "z_gettotalbalance", params);
-    return {
-      ...raw,
-      transparent: decimalString(raw["transparent"]),
-      private: decimalString(raw["private"]),
-      total: decimalString(raw["total"]),
-    };
+    // Coerce only fields the daemon actually sent. `decimalString(undefined)`
+    // would materialize the literal string "undefined" as a balance — the same
+    // drift-hiding footgun `decimalStringEntries` guards against — so an absent
+    // field stays absent and surfaces honestly.
+    const out: ZTotalBalanceResult = { ...raw } as ZTotalBalanceResult;
+    for (const field of ["transparent", "private", "total"] as const) {
+      if (raw[field] !== undefined) out[field] = decimalString(raw[field]);
+    }
+    return out;
   }
 
   /** Shielded addresses of this wallet. */

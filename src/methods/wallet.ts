@@ -115,8 +115,11 @@ export interface SendCurrencyOptions {
 }
 
 export interface OperationError {
-  code: number;
-  message: string;
+  // Both are optional: the daemon reliably sends them, but an error body that
+  // omits one must still surface as an OperationFailedError (the operation DID
+  // fail), never as a shape-drift error that hides the failure.
+  code?: number | undefined;
+  message?: string | undefined;
   [key: string]: unknown;
 }
 
@@ -223,8 +226,8 @@ export function mapOperationStatus(raw: unknown, index: number): OperationStatus
 
 function mapOperationError(obj: Record<string, unknown>, ctx: { method: string; field: string }): OperationError {
   return withPassthrough<OperationError>(obj, {
-    code: mapInt(obj["code"], { method: ctx.method, field: `${ctx.field}.code` }),
-    message: mapString(obj["message"], { method: ctx.method, field: `${ctx.field}.message` }),
+    code: mapIntOptional(obj["code"], { method: ctx.method, field: `${ctx.field}.code` }),
+    message: mapStringOptional(obj["message"], { method: ctx.method, field: `${ctx.field}.message` }),
   });
 }
 
