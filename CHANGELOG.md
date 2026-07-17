@@ -1,5 +1,71 @@
 # Changelog
 
+# [0.7.0](https://github.com/chainvue/verus-rpc/compare/v0.6.0...v0.7.0) (2026-07-17)
+
+
+* feat(blockchain)!: getBlockSubsidy and getNetworkInfo return bigint sats ([d3ff99d](https://github.com/chainvue/verus-rpc/commit/d3ff99d2de04abbe98d10ae41ce6d578ae250ed9))
+* feat(blockchain)!: getTxOut returns bigint sats; replace all 9 synthetic fixtures with real recordings ([7e0780c](https://github.com/chainvue/verus-rpc/commit/7e0780c86d95eec1ccb83f135630933f89b9ee01))
+
+
+### Bug Fixes
+
+* close review-found robustness gaps in operation polling and z_gettotalbalance ([9fa5376](https://github.com/chainvue/verus-rpc/commit/9fa5376a43810028d88b043fceefb16d15a37eb4))
+* **examples:** make a fresh clone actually work, and stop contradicting the credential-optional feature ([825ccae](https://github.com/chainvue/verus-rpc/commit/825ccaec0abfd079dc2a6fe40f784e4e182ac99c))
+* **review:** correct docs that contradicted the code, and drop comment narration ([f39a129](https://github.com/chainvue/verus-rpc/commit/f39a1297d0543b5b1ed759d4d0c201da05b98517))
+* **review:** correct false fixture claims, and record what the mapper actually needs ([a551f98](https://github.com/chainvue/verus-rpc/commit/a551f980c390b1aa768a3235237b12e511195252))
+* **review:** stop the T2 coercion from hiding drift, and close the holes in the enforcement test ([d45666f](https://github.com/chainvue/verus-rpc/commit/d45666f71e132e920e52cfc49080e3aa40ad4c4b))
+
+
+### Features
+
+* make the …AndWait helpers cancellable via AbortSignal ([1100018](https://github.com/chainvue/verus-rpc/commit/1100018749684d0061079ed32dc0af526b6ae211))
+
+
+### BREAKING CHANGES
+
+* getBlockSubsidy() and getNetworkInfo() return curated result
+types with bigint value fields instead of Record<string, unknown> with decimal
+strings. At 0.x this is a minor bump.
+* getTxOut returns GetTxOutResult | null instead of
+Record<string, unknown> | null, and its `value` is bigint sats rather than an
+untyped passthrough string. The same output read through listUnspent().amount
+or getAddressUtxos().satoshis already gave bigint — one concept had three
+types. `interest` (Komodo heritage, pushed only when non-zero) is bigint too.
+Verified live: getTxOut.value === listUnspent.amount === 600000000n, and an
+unknown output still short-circuits to null before mapping.
+
+Fixtures — the write surface had no recorded evidence at all. All nine
+synthetic ones are now real, and the recorded set cross-checks itself:
+
+- ONE deliberate VRSCTEST dust send closed sendcurrency +
+  z_getoperationstatus. 0.0001 to an address from getnewaddress — the wallet's
+  OWN — so the net wallet effect was 0.00000000 and only the 0.0001 miner fee
+  left (7470.00801611 -> 7470.00791611, verified before/after).
+- gettxout was recorded from the public mainnet gateway (no wallet needed) and
+  is the SAME output getaddressutxos.json already carries. value 0.01013218 ==
+  satoshis 1013218n == getaddressdeltas' currencyvalues token. One value,
+  three methods, now asserted.
+- gettransaction deliberately picks a send with a negative amount: a self-send
+  nets to 0 and would exercise nothing. It carries fee -25.0 — a single-decimal
+  token, the same hazard class as getblocksubsidy's 3.0.
+- Scrubbed: getwalletinfo's seedfp (wallet-unique, not chain-derivable) and its
+  reserve_balance currency names. Truncated: listunspent 473->2 (keeping the
+  currencyvalues entry the synthetic lacked), listaddressgroupings 442
+  groups/1112 addresses -> 2/3 (it exposes the ownership linkage graph),
+  listtransactions 10->2. Number tokens verified verbatim after every cut.
+
+scripts/record-fixtures.mjs makes this reproducible. It talks raw HTTP because
+nothing in the library can: DaemonTransport consumes response.text() and
+returns only the parsed result, and writeArtifacts additionally runs captures
+through toSafeNumbers — "0.00010000" as a STRING, which mapAmount rejects. The
+spend recipe refuses non-testnet chains and only sends to getnewaddress output.
+
+Also: shielded.ts was the weakest file at 76.6% lines — 7 targeted mock tests
+cover zListAddresses/zGetNewAddress/zListReceivedByAddress/zViewTransaction/
+zGetOperationResult/zShieldCoinbase and two gap-fill branches. Coverage floors
+ratcheted to ~2 under measured (86/72/88/90). getNetworkInfo now documents that
+its relayfee passthrough duplicates chain.getInfo()'s curated bigint.
+
 # [0.6.0](https://github.com/chainvue/verus-rpc/compare/v0.5.1...v0.6.0) (2026-07-16)
 
 
