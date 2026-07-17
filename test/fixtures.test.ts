@@ -17,7 +17,13 @@ import {
   mapCurrencyState,
 } from "../src/methods/currency.js";
 import { mapAddressBalance, mapAddressDelta, mapAddressUtxo } from "../src/methods/addressindex.js";
-import { mapCoinSupply, mapGetTxOut, mapGetVdxfId } from "../src/methods/blockchain.js";
+import {
+  mapCoinSupply,
+  mapGetBlockSubsidy,
+  mapGetNetworkInfo,
+  mapGetTxOut,
+  mapGetVdxfId,
+} from "../src/methods/blockchain.js";
 import {
   mapGetIdentity,
   mapIdentityDefinition,
@@ -264,13 +270,27 @@ describe("fixture conformance", () => {
     expect(txout.value).toBe(mapAddressUtxo(utxo, 1).satoshis);
   });
 
-  it("getblocksubsidy (recorded, mainnet) — T2 single-decimal token stays exact", () => {
-    // Recorded precisely because of `"miner":3.0`: JSON.parse would render it
-    // back as `3`, losing the daemon's own formatting. The T2 path keeps the
-    // exact token instead of ever producing a float.
-    const subsidy = toSafeNumbers(fixtureResult("getblocksubsidy.json")) as Record<string, unknown>;
-    expect(subsidy["miner"]).toBe("3.0");
-    expect(parseAmount(String(subsidy["miner"]))).toBe(300_000_000n);
+  it("getblocksubsidy (recorded VRSCTEST) — reward is bigint sats", () => {
+    // The daemon emits the 8-decimal token "3.00000000"; JSON.parse would
+    // render it back as `3`, losing the formatting. T1 gives exact bigint sats.
+    const subsidy = mapGetBlockSubsidy(fixtureResult("getblocksubsidy.json"));
+    expect(subsidy.miner).toBe(300_000_000n);
+  });
+
+  it("getnetworkinfo (recorded VRSCTEST) — relayfee bigint, nested arrays pass through", () => {
+    const info = mapGetNetworkInfo(fixtureResult("getnetworkinfo.json"));
+    // The one money field: "0.00000100" on the wire → 100 sats, the same
+    // bigint route as chain.getInfo().relayfee (no longer two types for it).
+    expect(info.relayfee).toBe(100n);
+    expect(info.subversion).toBe("/MagicBean:2.0.7-3/");
+    expect(info.localservices).toBe("0000000000000005"); // hex string, not a number
+    // networks/localaddresses are nested arrays that pass through untyped; the
+    // 2.0.7 daemon's extra `proxy_randomize_credentials` field must survive,
+    // and localaddress ports must stay safe-int numbers, never floats.
+    const networks = info["networks"] as Record<string, unknown>[];
+    expect(networks[0]!["proxy_randomize_credentials"]).toBe(false);
+    const local = info["localaddresses"] as Record<string, unknown>[];
+    expect(local[0]!["port"]).toBe(18842);
   });
 
   it("getblockchaininfo (recorded, mainnet) — T2 reference shape, no float64 anywhere", () => {

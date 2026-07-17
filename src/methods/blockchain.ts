@@ -148,6 +148,65 @@ export function mapGetTxOut(raw: unknown): GetTxOutResult {
   });
 }
 
+/** Result of `getblocksubsidy` — the block reward at a height. */
+export interface GetBlockSubsidyResult {
+  /** Miner reward — bigint sats. */
+  miner: bigint;
+  [key: string]: unknown;
+}
+
+export function mapGetBlockSubsidy(raw: unknown): GetBlockSubsidyResult {
+  const method = "getblocksubsidy";
+  const obj = expectObject(raw, method);
+  const ctx = (field: string): FieldContext => ({ method, field });
+  // The daemon (source v1.2.17, live-checked against 2.0.7) returns only
+  // `miner`; any PBaaS reward-split fields a newer daemon adds pass through.
+  return withPassthrough<GetBlockSubsidyResult>(obj, {
+    miner: mapAmount(obj["miner"], ctx("miner")),
+  });
+}
+
+/** Result of `getnetworkinfo` — P2P/network state. */
+export interface GetNetworkInfoResult {
+  /** Server build id. */
+  version: number;
+  /** Subversion string, e.g. "/MagicBean:2.0.7-3/". */
+  subversion: string;
+  protocolversion: number;
+  /** Offered service flags as a 16-char hex string (not a number). */
+  localservices: string;
+  timeoffset: number;
+  connections: number;
+  /**
+   * Minimum relay fee (per kB) — bigint sats. The same daemon field as
+   * `chain.getInfo().relayfee`; read through either, it is now bigint.
+   */
+  relayfee: bigint;
+  warnings: string;
+  /**
+   * `networks` and `localaddresses` are nested arrays whose element shape
+   * varies by daemon version (2.0.7 adds `proxy_randomize_credentials` to
+   * each network) — they pass through untyped under the index signature.
+   */
+  [key: string]: unknown;
+}
+
+export function mapGetNetworkInfo(raw: unknown): GetNetworkInfoResult {
+  const method = "getnetworkinfo";
+  const obj = expectObject(raw, method);
+  const ctx = (field: string): FieldContext => ({ method, field });
+  return withPassthrough<GetNetworkInfoResult>(obj, {
+    version: mapInt(obj["version"], ctx("version")),
+    subversion: mapString(obj["subversion"], ctx("subversion")),
+    protocolversion: mapInt(obj["protocolversion"], ctx("protocolversion")),
+    localservices: mapString(obj["localservices"], ctx("localservices")),
+    timeoffset: mapInt(obj["timeoffset"], ctx("timeoffset")),
+    connections: mapInt(obj["connections"], ctx("connections")),
+    relayfee: mapAmount(obj["relayfee"], ctx("relayfee")),
+    warnings: mapString(obj["warnings"], ctx("warnings")),
+  });
+}
+
 /** Blockchain and general reads + raw-transaction chain. */
 export class BlockchainApi {
   constructor(private readonly transport: RpcTransport) {}
@@ -189,6 +248,16 @@ export class BlockchainApi {
     });
   }
 
+  /**
+   * Block reward at a height (default: current tip). T1 — `miner` is bigint
+   * sats. The daemon returns only `miner`; PBaaS reward-split fields from a
+   * newer daemon pass through untyped.
+   */
+  async getBlockSubsidy(options?: { height?: number }): Promise<GetBlockSubsidyResult> {
+    const params: unknown[] = options?.height === undefined ? [] : [options.height];
+    return mapGetBlockSubsidy(await this.transport.request("getblocksubsidy", params));
+  }
+
   // -------------------------------------------------------------------------
   // T2 typed (value fields as exact decimal strings)
 
@@ -211,12 +280,6 @@ export class BlockchainApi {
   /** Node/mempool/chain info. T2. */
   async getMiningInfo(): Promise<Record<string, unknown>> {
     return requestT2(this.transport, "getmininginfo", []);
-  }
-
-  /** Block reward split at a height. T2 — decimal strings. */
-  async getBlockSubsidy(options?: { height?: number }): Promise<Record<string, unknown>> {
-    const params: unknown[] = options?.height === undefined ? [] : [options.height];
-    return requestT2(this.transport, "getblocksubsidy", params);
   }
 
   /** Decoded raw transaction. `verbose` controls hex vs object. T2. */
@@ -282,7 +345,7 @@ export class BlockchainApi {
   }
 
   // -------------------------------------------------------------------------
-  // Network / Util reads. T2.
+  // Network / Util reads. Mostly T2; getNetworkInfo is curated T1.
 
   /** Connected-peer info. T2. */
   async getPeerInfo(): Promise<unknown[]> {
@@ -290,12 +353,12 @@ export class BlockchainApi {
   }
 
   /**
-   * P2P/network summary. T2 — including its `relayfee`, which stays an
-   * untyped passthrough here. `client.chain.getInfo().relayfee` is the same
-   * daemon field curated as bigint sats; prefer that one for arithmetic.
+   * P2P/network summary. T1 — `relayfee` is bigint sats, the same daemon
+   * field as `client.chain.getInfo().relayfee`; reading it through either now
+   * gives the same type. `networks`/`localaddresses` pass through untyped.
    */
-  async getNetworkInfo(): Promise<Record<string, unknown>> {
-    return requestT2(this.transport, "getnetworkinfo", []);
+  async getNetworkInfo(): Promise<GetNetworkInfoResult> {
+    return mapGetNetworkInfo(await this.transport.request("getnetworkinfo", []));
   }
 
   /** Validate an address / return its metadata. T2. */

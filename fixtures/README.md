@@ -30,7 +30,8 @@ fixtures are parsed losslessly by the conformance suite, never through
 | `estimateconversion.json` | https://api.verus.services, VRSC→DAI.vETH via Bridge.vETH | 2026-07-12 | Live conversion estimate incl. reserve state |
 | `getaddressbalance.json` | https://api.verus.services (foundation primary address) | 2026-07-12 | **Mixed representations**: `balance` = satoshi integer, `currencybalance` = 8-decimal value |
 | `getvdxfid.json` | https://api.verus.services, `vrsc::system.currency.export` | 2026-07-12 | |
-| `getblocksubsidy.json` | https://api.verus.services, height 4147000 | 2026-07-12 | `"miner":3.0` single-decimal token |
+| `getblocksubsidy.json` | VRSCTEST node (daemon 2.0.7-3) | 2026-07-17 | Byte-exact. `"miner":3.00000000` → 300000000 sats (T1). Replaced the earlier synthetic `"miner":3.0` |
+| `getnetworkinfo.json` | VRSCTEST node (daemon 2.0.7-3) | 2026-07-17 | Byte-exact except `localaddresses` → RFC-3849 `2001:db8::` docs addresses (the node's real global IPv6 is infra, not chain data; ports/scores/structure verbatim). Carries the one money field `relayfee:0.00000100` → 100 sats (T1) |
 | `getblockchaininfo.json` | https://api.verus.services | 2026-07-12 | T2 reference shape |
 | `getaddressutxos.json` | https://api.verus.services (foundation primary address) | 2026-07-17 | Truncated from 517 to 2 entries (int-only re-serialization, verified lossless — this body carries no `currencyvalues`): one real 0-value CC/identity output, one real value UTXO |
 | `getaddressdeltas.json` | https://api.verus.services (foundation primary address, heights 3634845-3634846) | 2026-07-17 | **Byte-exact, untruncated.** Carries the same value in BOTH representations at once: `satoshis:1013218` and `currencyvalues:{...:0.01013218}`. Known gap: this address had no spend in range, so the recording has no negative (signed) delta — that path is covered by unit tests only |
@@ -45,10 +46,12 @@ assertion here, with exceptions listed explicitly and with a reason. Until
 mappers (`mapAddressUtxo`, `mapAddressDelta`, `mapNameCommitment`) had
 shipped with no fixture at all; those are now recorded.
 
-**No synthetic fixtures remain.** The nine that were hand-written from `help`
-v1.2.17 — every one of them on the wallet/write surface — were replaced with
-real recordings on 2026-07-17. Recording is now reproducible:
-`node scripts/record-fixtures.mjs reads` for the read surface, and
+**No synthetic fixtures remain.** The nine hand-written from `help` v1.2.17 —
+every one on the wallet/write surface — were replaced with real recordings on
+2026-07-17, and `getblocksubsidy.json` (the last synthetic, a mainnet
+`"miner":3.0`) was re-recorded real when it was promoted to T1. Recording is
+reproducible: `node scripts/record-fixtures.mjs reads` for the read surface
+(now including `getblocksubsidy` + `getnetworkinfo`), and
 `VERUS_RPC_ALLOW_SPEND=1 … spend` for the one dust transaction that closes
 `sendcurrency` + `z_getoperationstatus`.
 
