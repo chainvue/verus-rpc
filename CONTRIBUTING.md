@@ -86,6 +86,14 @@ Every method sits in one of three tiers:
    z-spending-key) must not log arguments or results and must have **mock-only**
    tests — no real-key fixture, ever.
 
+> **Staying current with the daemon:** a weekly workflow
+> ([`.github/workflows/rpc-drift.yml`](./.github/workflows/rpc-drift.yml)) diffs
+> the daemon's `CRPCCommand` tables against `rpc/commands-baseline.json` and
+> opens an issue when the daemon **gains or loses** commands — so new methods to
+> curate, and breaking removals, surface on their own. Run it locally with
+> `node scripts/rpc-drift.mjs`; after accounting for drift, refresh the baseline
+> with `--update-baseline --ref <tag>` and commit it.
+
 ## Commits and releases
 
 Releases are **fully automated** by [semantic-release](https://semantic-release.gitbook.io/).
