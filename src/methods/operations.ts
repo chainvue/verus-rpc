@@ -8,8 +8,28 @@ import {
 } from "../errors.js";
 import type { OperationStatus } from "./wallet.js";
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** A `setTimeout` sleep that rejects promptly if `signal` aborts mid-wait. */
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new TransportError("aborted", "polling aborted"));
+      return;
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(new TransportError("aborted", "polling aborted"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** Throw a `TransportError("aborted")` if the caller's signal is already aborted. */
+export function throwIfAborted(signal: AbortSignal | undefined, context: string): void {
+  if (signal?.aborted) throw new TransportError("aborted", `${context} aborted`);
 }
 
 /**
@@ -40,15 +60,23 @@ export function requireTxid(status: OperationStatus): string {
  * mid-poll daemon restart). "auth" (bad credentials), "aborted" (deliberate
  * cancel), and any other daemon error cannot recover by re-polling and fail
  * immediately.
+ *
+ * `signal` (optional) makes the wait cancellable: it aborts the in-flight
+ * poll request (the closure passes it to the transport) and is checked at the
+ * top of each iteration and during the inter-poll sleep, so a cancel surfaces
+ * as `TransportError("aborted")` within one interval rather than after up to
+ * `timeoutMs`. The already-broadcast operation still completes on the daemon.
  */
 export async function pollOperation(
   fetchStatus: () => Promise<OperationStatus | undefined>,
   opid: string,
   timing: { intervalMs: number; timeoutMs: number },
+  signal?: AbortSignal,
 ): Promise<OperationStatus> {
   const deadline = Date.now() + timing.timeoutMs;
   let lastPollError: TransportError | VerusRpcError | undefined;
   for (;;) {
+    throwIfAborted(signal, `operation ${opid} polling`);
     let status: OperationStatus | undefined;
     try {
       status = await fetchStatus();
@@ -70,6 +98,6 @@ export async function pollOperation(
     if (remaining <= 0) {
       throw new OperationTimeoutError(opid, timing.timeoutMs, lastPollError);
     }
-    await sleep(Math.min(timing.intervalMs, remaining));
+    await sleep(Math.min(timing.intervalMs, remaining), signal);
   }
 }

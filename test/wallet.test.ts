@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { OperationFailedError, OperationTimeoutError, ResponseMappingError, TransportError, VerusRpcError } from "../src/errors.js";
 import { isLosslessNumber } from "../src/lossless.js";
-import { WalletApi } from "../src/methods/wallet.js";
+import { WalletApi, type OperationStatus } from "../src/methods/wallet.js";
+import { pollOperation } from "../src/methods/operations.js";
 import { MockTransport } from "../src/mock.js";
 
 function setup(): { mock: MockTransport; wallet: WalletApi } {
@@ -262,5 +263,68 @@ describe("sendCurrencyAndWait", () => {
     expect(err).toBeInstanceOf(OperationTimeoutError);
     expect((err as OperationTimeoutError).opid).toBe("opid-1");
     expect((err as OperationTimeoutError).cause).toBeInstanceOf(TransportError);
+  });
+
+  it("does not broadcast when the signal is already aborted (cancel before send)", async () => {
+    const { mock, wallet } = setup();
+    const controller = new AbortController();
+    controller.abort();
+
+    const err = await wallet.sendCurrencyAndWait({ ...sendOptions, signal: controller.signal }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("aborted");
+    // The whole point: a pre-aborted wait must not put a transaction on-chain.
+    expect(mock.calls.filter((c) => c.method === "sendcurrency")).toHaveLength(0);
+  });
+
+  it("getOperationStatus threads the signal — a pre-aborted request rejects as aborted", async () => {
+    const { wallet } = setup();
+    const controller = new AbortController();
+    controller.abort();
+
+    const err = await wallet.getOperationStatus({ signal: controller.signal }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("aborted");
+  });
+});
+
+describe("pollOperation cancellation", () => {
+  const timing = { intervalMs: 10_000, timeoutMs: 60_000 };
+
+  it("throws aborted at the loop top without ever polling when the signal is pre-aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let polled = 0;
+
+    const err = await pollOperation(
+      () => {
+        polled++;
+        return Promise.resolve(undefined);
+      },
+      "opid-1",
+      timing,
+      controller.signal,
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("aborted");
+    expect(polled).toBe(0);
+  });
+
+  it("interrupts the inter-poll sleep the moment the signal aborts (no full interval wait)", async () => {
+    const controller = new AbortController();
+    // Abort from inside the first poll: the op is still executing, so the loop
+    // enters the 10s sleep — which must reject at once, not after 10s.
+    const executing: OperationStatus = { id: "opid-1", status: "executing" };
+    const err = await pollOperation(
+      () => {
+        controller.abort();
+        return Promise.resolve(executing);
+      },
+      "opid-1",
+      timing,
+      controller.signal,
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("aborted");
   });
 });

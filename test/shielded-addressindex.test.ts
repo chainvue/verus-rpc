@@ -1,6 +1,6 @@
 /** Etappe 5 — shielded (z_*), addressindex, blockchain/rawtx/util reads. */
 import { describe, expect, it } from "vitest";
-import { OperationFailedError, ResponseMappingError } from "../src/errors.js";
+import { OperationFailedError, ResponseMappingError, TransportError } from "../src/errors.js";
 import { isLosslessNumber, LosslessNumber, stringifyLossless } from "../src/lossless.js";
 import { AddressIndexApi } from "../src/methods/addressindex.js";
 import { BlockchainApi } from "../src/methods/blockchain.js";
@@ -31,6 +31,19 @@ describe("ShieldedApi", () => {
     expect(bal.total).toBe("1.00000000");
     expect(bal.private).toBeUndefined();
     expect(Object.values(bal)).not.toContain("undefined");
+  });
+
+  it("waitForOperation is cancellable — a pre-aborted signal rejects as aborted, never polls", async () => {
+    const mock = new MockTransport(); // nothing queued: it must not poll at all
+    const controller = new AbortController();
+    controller.abort();
+
+    const err = await new ShieldedApi(mock)
+      .waitForOperation({ opid: "opid-z1", signal: controller.signal })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("aborted");
+    expect(mock.calls.filter((c) => c.method === "z_getoperationstatus")).toHaveLength(0);
   });
 
   it("zSendMany serializes amounts/memo/fee losslessly", async () => {

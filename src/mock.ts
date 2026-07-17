@@ -49,8 +49,13 @@ export class MockTransport implements RpcTransport {
     return this.push(method, { kind: "transport-error", reason, message });
   }
 
-  request(method: string, params: unknown[]): Promise<unknown> {
+  request(method: string, params: unknown[], signal?: AbortSignal): Promise<unknown> {
     this.calls.push({ method, params });
+    // Mirror the real transport: a pre-aborted signal rejects as "aborted"
+    // before any response is consumed, so cancellation is testable end-to-end.
+    if (signal?.aborted) {
+      return Promise.reject(new TransportError("aborted", `${method}: aborted`));
+    }
     const queue = this.queues.get(method);
     const outcome = queue !== undefined && queue.length > 0 ? queue.shift() : this.sticky.get(method);
     if (outcome === undefined) {
