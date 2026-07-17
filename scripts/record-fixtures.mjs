@@ -83,6 +83,8 @@ async function assertTestnet() {
 const RECIPES = {
   // --- reads: no funds move ---
   getbalance: () => callRaw("getbalance", []),
+  getblocksubsidy: () => callRaw("getblocksubsidy", []),
+  getnetworkinfo: () => callRaw("getnetworkinfo", []),
   getwalletinfo: () => callRaw("getwalletinfo", []),
   listunspent: () => callRaw("listunspent", [1]),
   listtransactions: () => callRaw("listtransactions", ["*", 10]),
@@ -146,7 +148,7 @@ const RECIPES = {
   },
 };
 
-const READS = ["getbalance", "getwalletinfo", "listunspent", "listtransactions", "listaddressgroupings", "gettransaction", "signmessage"];
+const READS = ["getbalance", "getblocksubsidy", "getnetworkinfo", "getwalletinfo", "listunspent", "listtransactions", "listaddressgroupings", "gettransaction", "signmessage"];
 const argv = process.argv.slice(2);
 const requested = argv.includes("all") ? [...READS, "spend"] : argv.includes("reads") ? READS : argv;
 

@@ -33,9 +33,11 @@ const supply = await client.blockchain.coinSupply({ height: 1_000_000 });
 formatAmount(supply.total); // "55999999.99700000"
 ```
 
-`supply`, `immature`, `zfunds` and `total` are `bigint` sats. This is the one
-method whose values sit at the magnitude `docs/amounts.md` warns about
-(~8.35e15 sats, near `Number.MAX_SAFE_INTEGER`), which is why it is T1.
+`supply`, `immature`, `zfunds` and `total` are `bigint` sats. coinSupply
+carries the largest magnitudes in the API: a mature chain's totals sit right
+below float64's exact-integer ceiling (`2^53` sats, ≈ 90M coins) — the first
+place a higher-supply chain crosses into the silent rounding `docs/amounts.md`
+describes. T1 keeps them exact no matter how close they get.
 
 Three daemon facts worth knowing, all verified against v1.2.17:
 
@@ -90,8 +92,14 @@ rather than a joint one (it is a wallet method, so no recording can hold the
 same output as a public-gateway one). `interest` (Komodo heritage) appears only when
 non-zero and is bigint sats too.
 
-`getNetworkInfo` stays T2 and carries an untyped `relayfee` passthrough; for
-that field as bigint sats use `client.chain.getInfo().relayfee`.
+`getNetworkInfo` is T1: `relayfee` is bigint sats — the same daemon field as
+`client.chain.getInfo().relayfee`, so it no longer has two types depending on
+which call you reach it through. Its `networks`/`localaddresses` are nested
+arrays whose element shape drifts between daemon versions, so they pass through
+untyped rather than being curated.
+
+`getBlockSubsidy` is T1: `miner` is bigint sats. The daemon returns only that
+field; PBaaS reward-split fields from a newer daemon pass through untyped.
 
 ## `verifyChain` — read the positional trap
 
