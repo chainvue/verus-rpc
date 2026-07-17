@@ -82,9 +82,12 @@ await client.blockchain.validateAddress({ address: "R…" });
 answers with a `-1` sentinel, and a real fee-per-kB is never negative.
 
 `getTxOut` is T1: `value` is bigint sats, and `null` means the output is spent
-or unknown. The same output read through `listUnspent().amount` or
-`getAddressUtxos().satoshis` gives the identical bigint — that agreement is
-pinned by a fixture assertion. `interest` (Komodo heritage) appears only when
+or unknown. `listUnspent().amount` and `getAddressUtxos().satoshis` are the
+same type for the same output — one concept, one type, across all three. The
+`getTxOut`/`getAddressUtxos` agreement is pinned by a fixture assertion on a
+shared mainnet output; the `listUnspent` leg is covered by its own fixture
+rather than a joint one (it is a wallet method, so no recording can hold the
+same output as a public-gateway one). `interest` (Komodo heritage) appears only when
 non-zero and is bigint sats too.
 
 `getNetworkInfo` stays T2 and carries an untyped `relayfee` passthrough; for

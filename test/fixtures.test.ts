@@ -88,15 +88,15 @@ describe("fixture conformance", () => {
     );
   });
 
-  it("gettransaction (recorded VRSCTEST) — signed fee and signed detail amounts", () => {
+  it("gettransaction (recorded VRSCTEST) — a real outgoing send, signed at every level", () => {
     const tx = mapGetTransaction(fixtureResult("gettransaction.json"));
-    // A self-send: the wallet's NET effect is zero, while the details carry
-    // the signed legs and the fee is negative. Both signed paths are real here.
-    expect(tx.amount).toBe(0n);
-    expect(tx.fee).toBe(-2_500_000_000n);
-    expect(tx.details[0]!.amount).toBe(-7_743_077_217n);
-    expect(tx.details[1]!.amount).toBe(7_743_077_217n);
-    expect(tx.details.map((d) => d.category)).toEqual(["send", "receive"]);
+    // A genuine send OUT of the wallet, not a self-send: a self-send nets to
+    // 0.00000000, which maps identically with or without mapAmount's
+    // `signed` flag and would pin nothing.
+    expect(tx.amount).toBe(-10_000n);
+    expect(tx.fee).toBe(-10_000n);
+    expect(tx.details[0]!.amount).toBe(-10_000n);
+    expect(tx.details[0]!.category).toBe("send");
   });
 
   it("sendcurrency (recorded VRSCTEST dust send)", () => {
@@ -140,7 +140,8 @@ describe("fixture conformance", () => {
   it("listunspent (recorded VRSCTEST) — amounts bigint, currencyvalues passthrough exact", () => {
     const result = fixtureResult("listunspent.json") as unknown[];
     const utxos = result.map((item, i) => mapUnspentOutput(item, i));
-    expect(utxos[0]!.amount).toBe(600_000_000n);
+    // Two distinct magnitudes on purpose: dust, and a whole-coin entry.
+    expect(utxos[0]!.amount).toBe(10_000n);
     expect(utxos[1]!.amount).toBe(600_000_000n);
     // currencyvalues is NOT curated (it appears nowhere in src/) — it passes
     // through as an exact decimal string and must still agree with `amount`.
@@ -157,7 +158,6 @@ describe("fixture conformance", () => {
     expect(txs[0]!.amount).toBe(7_743_077_217n);
     expect(txs[1]!.category).toBe("send");
     expect(txs[1]!.amount).toBe(-7_743_077_217n);
-    // "-25.0" on the wire — a single-decimal token, like getblocksubsidy's 3.0.
     expect(txs[1]!.fee).toBe(-2_500_000_000n);
   });
 

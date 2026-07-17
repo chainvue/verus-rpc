@@ -25,7 +25,14 @@ const USER = process.env["VERUS_RPC_USER"];
 const PASS = process.env["VERUS_RPC_PASS"];
 const ALLOW_SPEND = process.env["VERUS_RPC_ALLOW_SPEND"] === "1";
 const FIXTURES = join(import.meta.dirname, "..", "fixtures");
+// The daemon reads sendcurrency amounts as coins. This literal is exact
+// through JSON.stringify (asserted below) — but the library's amountParam()
+// is unavailable here on purpose, so anything less trivial MUST NOT be
+// hand-written as a float. Widen this only with a bigint→token conversion.
 const DUST_COINS = 0.0001;
+if (JSON.stringify(DUST_COINS) !== "0.0001") {
+  throw new Error(`dust amount does not serialize exactly: ${JSON.stringify(DUST_COINS)}`);
+}
 
 if (URL_ === undefined) {
   console.error("Set VERUS_RPC_URL (and USER/PASS for a wallet node).");
@@ -81,13 +88,19 @@ const RECIPES = {
   listtransactions: () => callRaw("listtransactions", ["*", 10]),
   listaddressgroupings: () => callRaw("listaddressgroupings", []),
   gettransaction: async () => {
-    // A send with a NEGATIVE amount: the signed-amount path is what the
-    // mapper curates (amount and fee are both signed), and a self-send nets
-    // to 0.00000000, exercising nothing.
-    const txs = await call("listtransactions", ["*", 60]);
-    const tx = txs.find((t) => t.category === "send" && t.amount < 0 && t.fee !== undefined);
-    if (tx === undefined) throw new Error("wallet has no outgoing transaction to record");
-    return callRaw("gettransaction", [tx.txid]);
+    // The mapper curates a SIGNED top-level `amount`, so the fixture must
+    // carry a negative one. Filtering listtransactions is not enough: it
+    // reports per-leg amounts, while gettransaction re-aggregates them, so a
+    // self-send's legs look negative but its net is 0.00000000 — which maps
+    // identically with or without the signed flag and proves nothing. Check
+    // the body actually being recorded.
+    const txs = await call("listtransactions", ["*", 200]);
+    const txids = [...new Set(txs.filter((t) => t.category === "send").map((t) => t.txid))];
+    for (const txid of txids) {
+      const tx = await call("gettransaction", [txid]);
+      if (tx.amount < 0 && tx.fee !== undefined) return callRaw("gettransaction", [txid]);
+    }
+    throw new Error("wallet has no transaction with a negative net amount to record");
   },
   signmessage: async () => {
     const [group] = await call("listaddressgroupings", []);
@@ -106,10 +119,19 @@ const RECIPES = {
     write("sendcurrency", sendBody);
     const opid = JSON.parse(sendBody).result;
 
-    // Poll to a final state; only a "success" body carries result.txid.
+    // Poll to a final state; only a "success" body carries result.txid. This
+    // runs AFTER the broadcast, so it must fail loudly and specifically: the
+    // funds are already gone and sendcurrency.json is already written.
     for (let i = 0; i < 120; i++) {
       const body = await callRaw("z_getoperationstatus", [[opid]]);
-      const [status] = JSON.parse(body).result;
+      const result = JSON.parse(body).result;
+      if (!Array.isArray(result)) {
+        throw new Error(`z_getoperationstatus returned a non-array after the send (opid ${opid}): ${body.slice(0, 200)}`);
+      }
+      if (result.length === 0) {
+        throw new Error(`opid ${opid} vanished from z_getoperationstatus after the send — was z_getoperationresult called concurrently? The transaction WAS broadcast.`);
+      }
+      const [status] = result;
       if (status?.status === "success") {
         write("z_getoperationstatus", body);
         console.log(`  txid ${status.result.txid}`);
@@ -120,7 +142,7 @@ const RECIPES = {
       }
       await new Promise((r) => setTimeout(r, 2_000));
     }
-    throw new Error(`operation ${opid} never reached a final state`);
+    throw new Error(`operation ${opid} never reached a final state — the transaction WAS broadcast; check the opid before re-running`);
   },
 };
 
