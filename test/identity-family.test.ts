@@ -4,6 +4,7 @@ import { OperationTimeoutError, VerusRpcError } from "../src/errors.js";
 import { isLosslessNumber } from "../src/lossless.js";
 import { IdentityApi } from "../src/methods/identity.js";
 import { MockTransport } from "../src/mock.js";
+import { positionalTail } from "../src/methods/params.js";
 
 function setup(): { mock: MockTransport; identity: IdentityApi } {
   const mock = new MockTransport();
@@ -244,5 +245,19 @@ describe("T2 signatures & trust", () => {
     const { mock, identity } = setup();
     mock.respondJson("getidentitytrust", "null");
     await expect(identity.getIdentityTrust()).resolves.toBeNull();
+  });
+});
+
+describe("positionalTail", () => {
+  it("gap-fills only up to the last set option, using each slot's default", () => {
+    expect(positionalTail([undefined, undefined, undefined], [false, null, null])).toEqual([]);
+    expect(positionalTail([undefined, undefined, "src"], [false, null, null])).toEqual([false, null, "src"]);
+    expect(positionalTail([true, undefined], [false, null])).toEqual([true]);
+  });
+
+  it("refuses a defaults array that does not line up with the options", () => {
+    // A short defaults array would push undefined into a params slot, which
+    // serializes as null — on a fee-carrying method, silently not the default.
+    expect(() => positionalTail([undefined, "x"], [false])).toThrow(TypeError);
   });
 });

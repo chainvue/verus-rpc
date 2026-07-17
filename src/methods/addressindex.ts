@@ -1,8 +1,7 @@
-import { parseAmount } from "../amount.js";
-import { isLosslessNumber } from "../lossless.js";
 import {
   expectArray,
   expectObject,
+  mapAmount,
   mapInt,
   mapIntOptional,
   mapSats,
@@ -11,7 +10,6 @@ import {
   withPassthrough,
   type FieldContext,
 } from "../mapping.js";
-import { ResponseMappingError } from "../errors.js";
 import type { RpcTransport } from "../transport.js";
 
 /**
@@ -83,10 +81,7 @@ function mapCurrencyAmounts(
   const out: Record<string, bigint> = {};
   for (const [currency, value] of Object.entries(obj)) {
     const ctx: FieldContext = { method, field: `${field}.${currency}` };
-    if (!isLosslessNumber(value)) {
-      throw new ResponseMappingError(method, ctx.field, "expected a JSON number");
-    }
-    out[currency] = parseAmount(value.toString(), { allowNegative: true });
+    out[currency] = mapAmount(value, ctx, { signed: true });
   }
   return out;
 }

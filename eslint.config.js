@@ -17,13 +17,15 @@ export default tseslint.config(
     ...js.configs.recommended,
     languageOptions: { globals: globals.node },
   },
-  // Type-checked tier: everything tsconfig.json covers.
+  // Type-checked tier: everything tsconfig.json covers — including examples/,
+  // which ships to npm next to what users copy (a floating promise in the
+  // spend example is exactly what no-floating-promises exists to catch).
   ...tseslint.configs.recommendedTypeChecked.map((config) => ({
     ...config,
-    files: ["src/**/*.ts", "test/**/*.ts"],
+    files: ["src/**/*.ts", "test/**/*.ts", "examples/**/*.ts"],
   })),
   {
-    files: ["src/**/*.ts", "test/**/*.ts"],
+    files: ["src/**/*.ts", "test/**/*.ts", "examples/**/*.ts"],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -40,7 +42,9 @@ export default tseslint.config(
     },
   },
   {
-    files: ["test/**/*.ts"],
+    // Tests and examples are allowed to print — the no-console rule guards the
+    // library, not its callers.
+    files: ["test/**/*.ts", "examples/**/*.ts"],
     rules: {
       "no-console": "off",
     },

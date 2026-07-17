@@ -38,6 +38,26 @@ but `auth` (bad credentials) and `aborted` (caller cancel) fail immediately.
 On a timeout the operation may still complete on the daemon: check the opid
 (`getOperationStatus`) before retrying a send.
 
+Pass a `signal` to cancel the wait — `sendCurrencyAndWait`, `zSendManyAndWait`,
+and `waitForOperation` all accept one:
+
+```ts
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 30_000); // stop waiting after 30s
+const { txid } = await client.wallet.sendCurrencyAndWait({
+  fromAddress: "*",
+  outputs: [{ address: "receiver@", amount: parseAmount("1.5") }],
+  signal: controller.signal,
+});
+```
+
+The signal is checked before the send (a pre-aborted signal never broadcasts),
+aborts each in-flight poll request, and interrupts the inter-poll sleep — so a
+cancel surfaces as `TransportError` (reason `"aborted"`) within one interval,
+not after the full deadline. An **already-broadcast** operation still completes
+on the daemon; cancelling stops the polling, not the transaction — so treat it
+like a timeout and check the opid before retrying.
+
 One edge is deliberately NOT retry-shaped: a final `success` status whose
 result is missing `txid` throws `ResponseMappingError` (naming
 `z_getoperationstatus` / `result.txid`), not `OperationFailedError` — the
@@ -59,7 +79,26 @@ partially supported — see per-method JSDoc.
 
 ## Key material
 
-`importPrivKey`, `dumpPrivKey`, `dumpWallet`, `backupWallet` and friends are
-typed but handled as secrets: the library never logs their results, and no
-fixture ever contains real key material. Treat the returned strings
+Transparent: `importPrivKey`, `dumpPrivKey`, `dumpWallet`, `importWallet`,
+`backupWallet`, `importAddress`.
+Shielded: `zExportKey`/`zImportKey` (spending keys),
+`zExportViewingKey`/`zImportViewingKey` (view-only — a viewing key reveals
+every incoming transaction of an address), `zExportWallet`/`zImportWallet`.
+
+All are typed but handled as secrets: the library never logs their results,
+and no fixture ever contains real key material. Treat the returned strings
 accordingly.
+
+Two sharp edges:
+
+- `zExportWallet`/`dumpWallet` write to a file **on the node's filesystem**
+  (under the daemon's `-exportdir`) and return that path — not the contents.
+- `zExportWallet({ omitEmptyTAddresses: true })` does **not** merely skip
+  key-less book entries. It omits *keyed* transparent addresses that happen
+  to have no UTXOs, IDs or history — their private keys are then **missing
+  from the backup**. An address you handed out but that hasn't been paid yet
+  is exactly such a case. The daemon's own help warns against it; prefer the
+  default.
+
+`zValidateAddress` needs no wallet and tells you an address's type
+(sprout/sapling) and whether it is yours.

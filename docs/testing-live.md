@@ -1,7 +1,7 @@
 # Live testing against a daemon
 
-Two gated suites exercise the client against a **real** `verusd`. Neither runs
-in CI — they only activate when you set the env flags below. Together they are
+Three gated suites exercise the client against **real** endpoints. None run in
+CI — they only activate when you set the env flags below. Together they are
 the **post-release breaking-change check**: run them after a new `verus-cli`
 release; if a daemon response shape changed, a curated mapper throws
 `ResponseMappingError` naming the exact method and field.
@@ -10,6 +10,15 @@ release; if a daemon response shape changed, a curated mapper throws
 |---|---|---|---|
 | Read sweep | `test/integration.test.ts` | `VERUS_RPC_URL` | No |
 | Write harness | `test/spend.integration.test.ts` | `VERUS_RPC_URL` + `VERUS_RPC_ALLOW_SPEND=1` | **Yes (dust, VRSCTEST)** |
+| Public gateway | `test/public-node.integration.test.ts` | `VERUS_RPC_PUBLIC_URL` | No |
+
+The public-gateway suite needs no credentials — it exists to pin which
+methods a public node actually serves (e.g. `getspentinfo` yes, `coinsupply`
+no). One further optional flag, orthogonal to the table:
+
+- `VERUS_RPC_MAINNET_SMOKE=1` — adds a read-only shape smoke against mainnet
+  to the read sweep (`test/integration.test.ts`) and runs the examples live
+  (`test/examples.test.ts`).
 
 ## 1. Point at your node
 
@@ -48,7 +57,7 @@ daemon name + version is printed at the top for your release log.
 ```bash
 export VERUS_RPC_ALLOW_SPEND=1
 pnpm test test/spend.integration.test.ts
-# or both suites:  pnpm test:live
+# or all three gated suites:  pnpm test:live
 ```
 
 Runs, in order, on **VRSCTEST only** (it aborts if the chain reports
@@ -89,3 +98,33 @@ sensitive). Review the diff before committing.
 
 With no env flags, `pnpm test` runs only the offline suite — both live suites
 skip. CI never sets the flags, so it never spends or reaches a daemon.
+
+## Recording fixtures
+
+`fixtures/` holds real daemon responses; `test/fixtures.test.ts` replays them
+offline and **enforces** that every exported T1 mapper has one. To record:
+
+```bash
+# read surface — no funds move
+node scripts/record-fixtures.mjs reads
+
+# the one dust transaction that closes sendcurrency + z_getoperationstatus
+VERUS_RPC_ALLOW_SPEND=1 node scripts/record-fixtures.mjs spend
+```
+
+The spend recipe refuses a non-testnet chain, sends `0.0001` to an address it
+obtains from `getnewaddress` — i.e. back into the same wallet — and only the
+miner fee actually leaves.
+
+The recorder talks **raw HTTP** rather than going through the client, and that
+is deliberate: `DaemonTransport` consumes `response.text()` and returns only
+the parsed `result`, so no code above it can see the bytes; and the harness's
+`writeArtifacts` runs captures through `toSafeNumbers`, which turns
+`0.00010000` into the string `"0.00010000"` — feed that back as a fixture and
+`mapAmount` rejects it. `test-artifacts/` is for debugging, never a fixture
+source.
+
+After recording, review the diff: truncate large bodies (with the package's
+own lossless writer — `JSON.stringify` would rewrite `6.00000000` to `6.0`),
+scrub anything wallet-unique, and record what you did in the
+`fixtures/README.md` table.

@@ -1,7 +1,7 @@
 /** Etappe 5 — shielded (z_*), addressindex, blockchain/rawtx/util reads. */
 import { describe, expect, it } from "vitest";
-import { OperationFailedError, ResponseMappingError } from "../src/errors.js";
-import { isLosslessNumber, stringifyLossless } from "../src/lossless.js";
+import { OperationFailedError, ResponseMappingError, TransportError } from "../src/errors.js";
+import { isLosslessNumber, LosslessNumber, stringifyLossless } from "../src/lossless.js";
 import { AddressIndexApi } from "../src/methods/addressindex.js";
 import { BlockchainApi } from "../src/methods/blockchain.js";
 import { ShieldedApi } from "../src/methods/shielded.js";
@@ -19,6 +19,31 @@ describe("ShieldedApi", () => {
       private: "0.50000000",
       total: "2.00000000",
     });
+  });
+
+  it("zGetTotalBalance: a field the daemon omits stays absent, never the string 'undefined'", async () => {
+    // decimalString(undefined) would materialize the literal "undefined" as a
+    // balance, hiding the drift the tier exists to surface. An absent field
+    // must stay absent instead.
+    const mock = new MockTransport().respondJson("z_gettotalbalance", '{"transparent":"1.00000000","total":"1.00000000"}');
+    const bal = await new ShieldedApi(mock).zGetTotalBalance();
+    expect(bal.transparent).toBe("1.00000000");
+    expect(bal.total).toBe("1.00000000");
+    expect(bal.private).toBeUndefined();
+    expect(Object.values(bal)).not.toContain("undefined");
+  });
+
+  it("waitForOperation is cancellable — a pre-aborted signal rejects as aborted, never polls", async () => {
+    const mock = new MockTransport(); // nothing queued: it must not poll at all
+    const controller = new AbortController();
+    controller.abort();
+
+    const err = await new ShieldedApi(mock)
+      .waitForOperation({ opid: "opid-z1", signal: controller.signal })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(TransportError);
+    expect((err as TransportError).reason).toBe("aborted");
+    expect(mock.calls.filter((c) => c.method === "z_getoperationstatus")).toHaveLength(0);
   });
 
   it("zSendMany serializes amounts/memo/fee losslessly", async () => {
@@ -40,6 +65,95 @@ describe("ShieldedApi", () => {
     expect(String(entry!["amount"])).toBe("0.10000000");
     expect(params[2]).toBe(1);
     expect(String(params[3])).toBe("0.00010000");
+  });
+
+  it("zListAddresses forwards includeWatchOnly only when given", async () => {
+    const mock = new MockTransport().respondJson("z_listaddresses", '["zs1a","zs1b"]');
+    mock.respondJson("z_listaddresses", '["zs1a"]');
+    const sh = new ShieldedApi(mock);
+    await expect(sh.zListAddresses()).resolves.toEqual(["zs1a", "zs1b"]);
+    expect(mock.calls[0]!.params).toEqual([]);
+    await sh.zListAddresses({ includeWatchOnly: true });
+    expect(mock.calls[1]!.params).toEqual([true]);
+  });
+
+  it("zGetNewAddress forwards the type only when given", async () => {
+    const mock = new MockTransport().respondJson("z_getnewaddress", '"zs1new"');
+    mock.respondJson("z_getnewaddress", '"zs1sap"');
+    const sh = new ShieldedApi(mock);
+    await expect(sh.zGetNewAddress()).resolves.toBe("zs1new");
+    expect(mock.calls[0]!.params).toEqual([]);
+    await sh.zGetNewAddress({ type: "sapling" });
+    expect(mock.calls[1]!.params).toEqual(["sapling"]);
+  });
+
+  it("zListReceivedByAddress coerces amount and forwards minConf", async () => {
+    const mock = new MockTransport().respondJson(
+      "z_listreceivedbyaddress",
+      '[{"txid":"aa","amount":2,"memo":"f5"}]',
+    );
+    const [entry] = await new ShieldedApi(mock).zListReceivedByAddress({ address: "zs1a", minConf: 3 });
+    expect(mock.calls[0]!.params).toEqual(["zs1a", 3]);
+    expect(entry!.amount).toBe("2"); // integer on the wire → exact string
+  });
+
+  it("zGetTotalBalance gap-fills minConf when only includeWatchOnly is given", async () => {
+    const mock = new MockTransport().respondJson(
+      "z_gettotalbalance",
+      '{"transparent":"1.00000000","private":"0.00000000","total":"1.00000000"}',
+    );
+    const res = await new ShieldedApi(mock).zGetTotalBalance({ includeWatchOnly: true });
+    expect(mock.calls[0]!.params).toEqual([1, true]); // minConf default 1 fills the slot
+    expect(res.transparent).toBe("1.00000000");
+  });
+
+  it("zListUnspent gap-fills minConf and maxConf with the daemon's defaults", async () => {
+    const mock = new MockTransport().respondJson("z_listunspent", "[]");
+    await new ShieldedApi(mock).zListUnspent({ addresses: ["zs1a"] });
+    expect(mock.calls[0]!.params).toEqual([1, 9_999_999, false, ["zs1a"]]);
+  });
+
+  it("zViewTransaction and zGetOperationResult forward their params", async () => {
+    const mock = new MockTransport().respondJson("z_viewtransaction", '{"txid":"aa"}');
+    mock.respondJson("z_getoperationresult", "[]");
+    const sh = new ShieldedApi(mock);
+    await sh.zViewTransaction({ txid: "aa" });
+    expect(mock.calls[0]!.params).toEqual(["aa"]);
+    await sh.zGetOperationResult({ operationIds: ["opid-1"] });
+    expect(mock.calls[1]!.params).toEqual([["opid-1"]]);
+  });
+
+  it("zShieldCoinbase gap-fills the fee slot with the daemon default when only limit is given", async () => {
+    const mock = new MockTransport().respondJson("z_shieldcoinbase", '{"opid":"opid-1"}');
+    await new ShieldedApi(mock).zShieldCoinbase({ fromAddress: "*", toAddress: "zs1a", limit: 20 });
+    // fee 0.0001 must occupy slot 3 — positional params, so a skipped slot
+    // would silently shift `limit` into the fee position.
+    expect(mock.calls[0]!.params).toEqual(["*", "zs1a", new LosslessNumber("0.0001"), 20]);
+  });
+
+  it("zListUnspent keeps an absent amount ABSENT instead of the string \"undefined\"", async () => {
+    // Coercing a missing field with String() would materialize a truthy
+    // "undefined" and hide exactly the daemon drift T2 exists to surface.
+    const mock = new MockTransport().respondJson("z_listunspent", '[{"txid":"aa","confirmations":1,"address":"zs1"}]');
+    const [entry] = await new ShieldedApi(mock).zListUnspent();
+    expect(entry!["amount"]).toBeUndefined();
+    expect("amount" in entry!).toBe(false);
+  });
+
+  it("zListUnspent coerces a present integer amount to an exact decimal string", async () => {
+    const mock = new MockTransport().respondJson(
+      "z_listunspent",
+      '[{"txid":"aa","confirmations":1,"address":"zs1","amount":2}]',
+    );
+    const [entry] = await new ShieldedApi(mock).zListUnspent();
+    expect(entry!.amount).toBe("2");
+  });
+
+  it("zListUnspent surfaces a non-array reply as ResponseMappingError, not a raw TypeError", async () => {
+    const mock = new MockTransport().respondJson("z_listunspent", "null");
+    const err = await new ShieldedApi(mock).zListUnspent().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ResponseMappingError);
+    expect((err as ResponseMappingError).method).toBe("z_listunspent");
   });
 
   it("zSendManyAndWait polls to success", async () => {

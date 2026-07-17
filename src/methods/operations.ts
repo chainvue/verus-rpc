@@ -1,8 +1,35 @@
-import { OperationFailedError, OperationTimeoutError, ResponseMappingError, TransportError } from "../errors.js";
+import {
+  OperationFailedError,
+  OperationTimeoutError,
+  ResponseMappingError,
+  RpcErrorCode,
+  TransportError,
+  VerusRpcError,
+} from "../errors.js";
 import type { OperationStatus } from "./wallet.js";
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** A `setTimeout` sleep that rejects promptly if `signal` aborts mid-wait. */
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new TransportError("aborted", "polling aborted"));
+      return;
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(new TransportError("aborted", "polling aborted"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** Throw a `TransportError("aborted")` if the caller's signal is already aborted. */
+export function throwIfAborted(signal: AbortSignal | undefined, context: string): void {
+  if (signal?.aborted) throw new TransportError("aborted", `${context} aborted`);
 }
 
 /**
@@ -26,25 +53,39 @@ export function requireTxid(status: OperationStatus): string {
  *
  * `fetchStatus` performs one z_getoperationstatus round-trip and returns the
  * matching entry (or undefined while the daemon has not listed it yet).
- * Transient transport failures are tolerated until the deadline — the
- * operation is already in flight and must not be abandoned — but "auth"
- * (bad credentials) and "aborted" (deliberate cancel) cannot recover by
- * re-polling and fail immediately.
+ * Transient failures are tolerated until the deadline — the operation is
+ * already in flight and must not be abandoned, and re-driving the whole send
+ * on a poll error would double-spend. Tolerated: any non-auth/non-aborted
+ * transport failure, plus the daemon's warmup window (`RPC_IN_WARMUP`, e.g. a
+ * mid-poll daemon restart). "auth" (bad credentials), "aborted" (deliberate
+ * cancel), and any other daemon error cannot recover by re-polling and fail
+ * immediately.
+ *
+ * `signal` (optional) makes the wait cancellable: it aborts the in-flight
+ * poll request (the closure passes it to the transport) and is checked at the
+ * top of each iteration and during the inter-poll sleep, so a cancel surfaces
+ * as `TransportError("aborted")` within one interval rather than after up to
+ * `timeoutMs`. The already-broadcast operation still completes on the daemon.
  */
 export async function pollOperation(
   fetchStatus: () => Promise<OperationStatus | undefined>,
   opid: string,
   timing: { intervalMs: number; timeoutMs: number },
+  signal?: AbortSignal,
 ): Promise<OperationStatus> {
   const deadline = Date.now() + timing.timeoutMs;
-  let lastPollError: TransportError | undefined;
+  let lastPollError: TransportError | VerusRpcError | undefined;
   for (;;) {
+    throwIfAborted(signal, `operation ${opid} polling`);
     let status: OperationStatus | undefined;
     try {
       status = await fetchStatus();
       lastPollError = undefined;
     } catch (err) {
-      if (!(err instanceof TransportError) || err.reason === "auth" || err.reason === "aborted") throw err;
+      const transient =
+        (err instanceof TransportError && err.reason !== "auth" && err.reason !== "aborted") ||
+        (err instanceof VerusRpcError && err.code === RpcErrorCode.RPC_IN_WARMUP);
+      if (!transient) throw err;
       lastPollError = err;
     }
     if (status !== undefined) {
@@ -57,6 +98,6 @@ export async function pollOperation(
     if (remaining <= 0) {
       throw new OperationTimeoutError(opid, timing.timeoutMs, lastPollError);
     }
-    await sleep(Math.min(timing.intervalMs, remaining));
+    await sleep(Math.min(timing.intervalMs, remaining), signal);
   }
 }

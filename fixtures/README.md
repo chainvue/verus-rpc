@@ -11,15 +11,15 @@ fixtures are parsed losslessly by the conformance suite, never through
 | `getidentity.json` | https://api.verus.services, `"Verus Coin Foundation@"` | 2026-07-12 | Includes contentmultimap |
 | `error-method-not-found.json` | https://api.verus.services | 2026-07-12 | Gateway allowlist rejection, code -32601 |
 | `getcurrencybalance.json` | VRSCTEST node probe (daemon v1.2.17) | 2026-07-12 | Verbatim documented raw-body probe |
-| `getbalance.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Replace with VRSCTEST recording when node access is available |
-| `gettransaction.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Wallet-only — not exposed on the public gateway |
-| `sendcurrency.json` | **synthetic** (opid shape) | 2026-07-12 | Write-method: record once from a deliberate VRSCTEST dust send |
-| `z_getoperationstatus.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Replace with the recording of the same dust send |
-| `listunspent.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Wallet-only; includes dust + `interest` passthrough field |
-| `listtransactions.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Wallet-only |
-| `getwalletinfo.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Includes verus staking-balance fields as passthrough |
-| `listaddressgroupings.json` | **synthetic** (hand-written from `help` v1.2.17) | 2026-07-12 | Tuple-array shape |
-| `signmessage.json` | **synthetic** (shape from v402's verified usage) | 2026-07-12 | verusd returns `{hash, signature}`, not a bare string |
+| `getbalance.json` | VRSCTEST node (daemon v1.2.17) | 2026-07-17 | Byte-exact |
+| `gettransaction.json` | VRSCTEST node | 2026-07-17 | Byte-exact. A genuine outgoing send (`amount:-0.00010000`, `fee:-0.00010000`) — NOT a self-send: a self-send nets to `0.00000000`, which maps the same with or without the signed flag and would pin nothing. Picked by checking the recorded body's net, since `listtransactions` reports per-leg amounts that `gettransaction` re-aggregates |
+| `sendcurrency.json` | VRSCTEST node — **one deliberate dust send** | 2026-07-17 | Byte-exact. 0.0001 to one of the wallet's OWN fresh addresses (`getnewaddress`); the wallet's net effect was 0, only the 0.0001 miner fee left. Body is just an opid (a UUID) |
+| `z_getoperationstatus.json` | VRSCTEST node — the same dust send | 2026-07-17 | Byte-exact, polled to `success`. `execution_secs` is `0.06622409899999999` — a real float-shaped token that `JSON.parse` would round |
+| `listunspent.json` | VRSCTEST node | 2026-07-17 | **Truncated 473 → 2** via the package's own lossless writer (`JSON.stringify` would have rewritten `6.00000000` → `6.0`). Two distinct magnitudes — dust `0.00010000` and `6.00000000` — and the latter carries `currencyvalues`, which the old synthetic lacked entirely |
+| `listtransactions.json` | VRSCTEST node | 2026-07-17 | **Truncated 10 → 2**: one real receive (`+77.43077217`) and one real send with a negative amount and `fee:-25.00000000`. No `comment` field exists on this wallet |
+| `getwalletinfo.json` | VRSCTEST node | 2026-07-17 | **Two edits, number tokens untouched:** `seedfp` → zeros (same length) — wallet-unique and not derivable from the chain (precedent: `registernamecommitment.salt`); `reserve_balance` currency names → `testcurrency-a..f` |
+| `listaddressgroupings.json` | VRSCTEST node | 2026-07-17 | **Truncated 442 groups / 1112 addresses → 2 groups / 3 addresses**, keeping only the structure: a 2-tuple, a 3-tuple (empty `account`), and a value-bearing group |
+| `signmessage.json` | VRSCTEST node, message `"verus-rpc fixture"` | 2026-07-17 | Byte-exact. Confirms verusd returns `{hash, signature}`, not a bare string. A signature permits pubkey recovery but never discloses the private key |
 | `getidentitycontent.json` | https://api.verus.services, `"Verus Coin Foundation@"` | 2026-07-12 | |
 | `getidentityhistory.json` | https://api.verus.services, `"Verus Coin Foundation@"` | 2026-07-12 | 15 history entries |
 | `getidentitieswithaddress.json` | https://api.verus.services (foundation primary address) | 2026-07-12 | Truncated from 3451 to 2 entries (int-only re-serialization, lossless); flat identity shape |
@@ -30,10 +30,36 @@ fixtures are parsed losslessly by the conformance suite, never through
 | `estimateconversion.json` | https://api.verus.services, VRSC→DAI.vETH via Bridge.vETH | 2026-07-12 | Live conversion estimate incl. reserve state |
 | `getaddressbalance.json` | https://api.verus.services (foundation primary address) | 2026-07-12 | **Mixed representations**: `balance` = satoshi integer, `currencybalance` = 8-decimal value |
 | `getvdxfid.json` | https://api.verus.services, `vrsc::system.currency.export` | 2026-07-12 | |
-| `getblocksubsidy.json` | https://api.verus.services, height 4147000 | 2026-07-12 | `"miner":3.0` single-decimal token |
+| `getblocksubsidy.json` | VRSCTEST node (daemon 2.0.7-3) | 2026-07-17 | Byte-exact. `"miner":3.00000000` → 300000000 sats (T1). Replaced the earlier synthetic `"miner":3.0` |
+| `getnetworkinfo.json` | VRSCTEST node (daemon 2.0.7-3) | 2026-07-17 | Byte-exact except `localaddresses` → RFC-3849 `2001:db8::` docs addresses (the node's real global IPv6 is infra, not chain data; ports/scores/structure verbatim). Carries the one money field `relayfee:0.00000100` → 100 sats (T1) |
 | `getblockchaininfo.json` | https://api.verus.services | 2026-07-12 | T2 reference shape |
+| `getaddressutxos.json` | https://api.verus.services (foundation primary address) | 2026-07-17 | Truncated from 517 to 2 entries (int-only re-serialization, verified lossless — this body carries no `currencyvalues`): one real 0-value CC/identity output, one real value UTXO |
+| `getaddressdeltas.json` | https://api.verus.services (foundation primary address, heights 3634845-3634846) | 2026-07-17 | **Byte-exact, untruncated.** Carries the same value in BOTH representations at once: `satoshis:1013218` and `currencyvalues:{...:0.01013218}`. Known gap: this address had no spend in range, so the recording has no negative (signed) delta — that path is covered by unit tests only |
+| `registernamecommitment.json` | VRSCTEST live write-harness capture (daemon v1.2.17) | 2026-07-17 | Real recorded response; **`salt` scrubbed** to zeros (same length) — a commitment secret never enters the repo. All other values verbatim; int-only re-serialization, lossless |
+| `gettxout.json` | https://api.verus.services (foundation UTXO, the same output `getaddressutxos.json` carries) | 2026-07-17 | Byte-exact. `value:0.01013218` must equal that fixture's `satoshis:1013218` — one value, three methods, asserted |
 | `coinsupply.json` | VRSCTEST node probe (daemon v1.2.17), height 1000000 | 2026-07-17 | Supply-scale amounts; trailing-zero token `55999999.99700000`. Not on the public gateway (`-32601`); daemon reports failures in-band (`{"error": ...}`) |
 
-T1 discipline: synthetic fixtures are a stopgap — the tier promise ("no T1
-method without a recorded fixture") is only fully honored once the wallet
-methods are re-recorded from the VRSCTEST node.
+T1 discipline: `test/fixtures.test.ts` now ENFORCES the rule — it discovers
+every exported `map*` in `src/methods/` and fails if one has no conformance
+assertion here, with exceptions listed explicitly and with a reason. Until
+2026-07-17 the rule lived only in a PR-template checkbox, and three T1 money
+mappers (`mapAddressUtxo`, `mapAddressDelta`, `mapNameCommitment`) had
+shipped with no fixture at all; those are now recorded.
+
+**No synthetic fixtures remain.** The nine hand-written from `help` v1.2.17 —
+every one on the wallet/write surface — were replaced with real recordings on
+2026-07-17, and `getblocksubsidy.json` (the last synthetic, a mainnet
+`"miner":3.0`) was re-recorded real when it was promoted to T1. Recording is
+reproducible: `node scripts/record-fixtures.mjs reads` for the read surface
+(now including `getblocksubsidy` + `getnetworkinfo`), and
+`VERUS_RPC_ALLOW_SPEND=1 … spend` for the one dust transaction that closes
+`sendcurrency` + `z_getoperationstatus`.
+
+Byte-exactness note: the recorder talks raw HTTP on purpose. Nothing inside
+the library can deliver a byte-exact body — `DaemonTransport` consumes
+`response.text()` and returns only the parsed `result`, and the test harness's
+`writeArtifacts` additionally runs captures through `toSafeNumbers`, turning
+`0.00010000` into the STRING `"0.00010000"`, which would break `mapAmount` if
+fed back. Truncated fixtures are re-serialized with the package's own lossless
+writer, so number tokens survive verbatim; each is declared as truncated
+above.

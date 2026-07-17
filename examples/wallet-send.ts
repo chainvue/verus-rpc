@@ -5,7 +5,7 @@
  *
  *   VERUS_RPC_URL=http://127.0.0.1:18843 \
  *   VERUS_RPC_USER=... VERUS_RPC_PASS=... \
- *   npx tsx examples/wallet-send.ts "destination@"
+ *   pnpm i && node --experimental-strip-types examples/wallet-send.ts "destination@"
  */
 import { formatAmount, parseAmount, VerusClient } from "@chainvue/verus-rpc";
 
@@ -21,10 +21,13 @@ if (destination === undefined) {
   process.exit(1);
 }
 
+// Credentials are optional and must be passed together — omit both for a
+// public gateway, supply both for your own daemon.
+const user = process.env["VERUS_RPC_USER"];
+const pass = process.env["VERUS_RPC_PASS"];
 const client = new VerusClient({
   url,
-  user: process.env["VERUS_RPC_USER"] ?? "",
-  pass: process.env["VERUS_RPC_PASS"] ?? "",
+  ...(user !== undefined && pass !== undefined ? { user, pass } : {}),
 });
 
 const balance = await client.wallet.getBalance();

@@ -1,9 +1,11 @@
 import { amountParam } from "../amount.js";
 import { LosslessNumber } from "../lossless.js";
 import { expectArray, mapString, mapStringArray } from "../mapping.js";
+import { toSafeNumbers } from "../lossless.js";
 import type { RpcTransport } from "../transport.js";
-import { pollOperation, requireTxid } from "./operations.js";
-import { requestT2 } from "./t2.js";
+import { pollOperation, requireTxid, throwIfAborted } from "./operations.js";
+import { positionalTail } from "./params.js";
+import { decimalString, decimalStringEntries, requestT2 } from "./t2.js";
 import { mapOperationStatus, type OperationStatus } from "./wallet.js";
 
 /**
@@ -77,10 +79,12 @@ export interface WaitForOperationOptions {
   pollIntervalMs?: number;
   /** Default 120s. */
   waitTimeoutMs?: number;
-}
-
-function decimalString(value: unknown): string {
-  return typeof value === "string" ? value : String(value);
+  /**
+   * Cancels the wait: aborts each in-flight poll request and interrupts the
+   * inter-poll sleep, surfacing as `TransportError("aborted")`. The operation
+   * still completes on the daemon — cancelling stops the polling only.
+   */
+  signal?: AbortSignal;
 }
 
 /** The daemon's default z-operation fee (0.0001), for gap-filled slots. */
@@ -107,12 +111,15 @@ export class ShieldedApi {
     }
     if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
     const raw = await requestT2<Record<string, unknown>>(this.transport, "z_gettotalbalance", params);
-    return {
-      ...raw,
-      transparent: decimalString(raw["transparent"]),
-      private: decimalString(raw["private"]),
-      total: decimalString(raw["total"]),
-    };
+    // Coerce only fields the daemon actually sent. `decimalString(undefined)`
+    // would materialize the literal string "undefined" as a balance — the same
+    // drift-hiding footgun `decimalStringEntries` guards against — so an absent
+    // field stays absent and surfaces honestly.
+    const out: ZTotalBalanceResult = { ...raw } as ZTotalBalanceResult;
+    for (const field of ["transparent", "private", "total"] as const) {
+      if (raw[field] !== undefined) out[field] = decimalString(raw[field]);
+    }
+    return out;
   }
 
   /** Shielded addresses of this wallet. */
@@ -128,7 +135,8 @@ export class ShieldedApi {
   async zListReceivedByAddress(options: { address: string; minConf?: number }): Promise<ZReceivedEntry[]> {
     const params: unknown[] = [options.address];
     if (options.minConf !== undefined) params.push(options.minConf);
-    return requestT2(this.transport, "z_listreceivedbyaddress", params);
+    const raw = await this.transport.request("z_listreceivedbyaddress", params);
+    return decimalStringEntries<ZReceivedEntry>(toSafeNumbers(raw), "z_listreceivedbyaddress", "amount");
   }
 
   /** Unspent shielded notes. T2. */
@@ -147,7 +155,8 @@ export class ShieldedApi {
       params.push(options.includeWatchOnly ?? false);
     }
     if (options?.addresses !== undefined) params.push(options.addresses);
-    return requestT2(this.transport, "z_listunspent", params);
+    const raw = await this.transport.request("z_listunspent", params);
+    return decimalStringEntries<ZUnspentEntry>(toSafeNumbers(raw), "z_listunspent", "amount");
   }
 
   /** New shielded address. VRSCTEST note: sapling support may be limited. */
@@ -186,13 +195,14 @@ export class ShieldedApi {
     return pollOperation(
       async () => {
         const raw = expectArray(
-          await this.transport.request("z_getoperationstatus", [[options.opid]]),
+          await this.transport.request("z_getoperationstatus", [[options.opid]], options.signal),
           "z_getoperationstatus",
         );
         return raw.map((item, i) => mapOperationStatus(item, i)).find((s) => s.id === options.opid);
       },
       options.opid,
       { intervalMs: options.pollIntervalMs ?? 1_000, timeoutMs: options.waitTimeoutMs ?? 120_000 },
+      options.signal,
     );
   }
 
@@ -202,14 +212,16 @@ export class ShieldedApi {
    * the send completed, only the response shape drifted; never retry it.
    */
   async zSendManyAndWait(
-    options: ZSendManyOptions & { pollIntervalMs?: number; waitTimeoutMs?: number },
+    options: ZSendManyOptions & { pollIntervalMs?: number; waitTimeoutMs?: number; signal?: AbortSignal },
   ): Promise<{ opid: string; txid: string }> {
-    const { pollIntervalMs, waitTimeoutMs, ...sendOptions } = options;
+    const { pollIntervalMs, waitTimeoutMs, signal, ...sendOptions } = options;
+    throwIfAborted(signal, "zSendManyAndWait");
     const opid = await this.zSendMany(sendOptions);
     const status = await this.waitForOperation({
       opid,
       ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {}),
       ...(waitTimeoutMs !== undefined ? { waitTimeoutMs } : {}),
+      ...(signal !== undefined ? { signal } : {}),
     });
     return { opid, txid: requireTxid(status) };
   }
@@ -240,8 +252,7 @@ export class ShieldedApi {
     // sprout notes default to 20 on a bare daemon call; set `shieldedLimit`
     // explicitly if you merge sprout notes).
     const defaults: unknown[] = [defaultZFee(), 50, 200, ""];
-    const lastSet = opts.reduce<number>((last, value, i) => (value === undefined ? last : i), -1);
-    for (let i = 0; i <= lastSet; i++) params.push(opts[i] ?? defaults[i]);
+    params.push(...positionalTail(opts, defaults));
     return requestT2(this.transport, "z_mergetoaddress", params);
   }
 

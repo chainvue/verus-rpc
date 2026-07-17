@@ -58,10 +58,6 @@ export function mapSats(value: unknown, ctx: FieldContext, opts?: { signed?: boo
   return sats;
 }
 
-export function mapSatsOptional(value: unknown, ctx: FieldContext, opts?: { signed?: boolean }): bigint | undefined {
-  return value === undefined || value === null ? undefined : mapSats(value, ctx, opts);
-}
-
 /** Heights, counts, indexes, timestamps — plain safe integers. */
 export function mapInt(value: unknown, ctx: FieldContext): number {
   if (!isLosslessNumber(value)) {

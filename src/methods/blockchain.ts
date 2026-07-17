@@ -1,7 +1,17 @@
 import { amountParam } from "../amount.js";
 import { RpcErrorCode, VerusRpcError } from "../errors.js";
 import { isLosslessNumber } from "../lossless.js";
-import { expectObject, mapAmount, mapBoolean, mapInt, mapString, mapStringOptional, withPassthrough } from "../mapping.js";
+import {
+  expectObject,
+  mapAmount,
+  mapAmountOptional,
+  mapBoolean,
+  mapInt,
+  mapString,
+  mapStringOptional,
+  withPassthrough,
+  type FieldContext,
+} from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
 import { requestT2 } from "./t2.js";
 
@@ -96,7 +106,7 @@ export function mapCoinSupply(raw: unknown): CoinSupplyResult {
       typeof inBandError === "string" ? inBandError : JSON.stringify(inBandError),
     );
   }
-  const ctx = (field: string): { method: string; field: string } => ({ method, field });
+  const ctx = (field: string): FieldContext => ({ method, field });
   return withPassthrough(obj, {
     coin: mapString(obj["coin"], ctx("coin")),
     height: mapInt(obj["height"], ctx("height")),
@@ -104,6 +114,96 @@ export function mapCoinSupply(raw: unknown): CoinSupplyResult {
     immature: mapAmount(obj["immature"], ctx("immature")),
     zfunds: mapAmount(obj["zfunds"], ctx("zfunds")),
     total: mapAmount(obj["total"], ctx("total")),
+  });
+}
+
+/** Result of `gettxout` — one unspent output. */
+export interface GetTxOutResult {
+  /** Hash of the block this view is against. */
+  bestblock: string;
+  /** 0 while the output is only in the mempool. */
+  confirmations: number;
+  /** Output value — bigint sats. */
+  value: bigint;
+  /**
+   * Komodo-heritage accrued interest — bigint sats. The daemon pushes this
+   * field only when it is non-zero, and its own help text does not document
+   * it (verified against v1.2.17 source).
+   */
+  interest?: bigint | undefined;
+  coinbase: boolean;
+  [key: string]: unknown;
+}
+
+export function mapGetTxOut(raw: unknown): GetTxOutResult {
+  const method = "gettxout";
+  const obj = expectObject(raw, method);
+  const ctx = (field: string): FieldContext => ({ method, field });
+  return withPassthrough<GetTxOutResult>(obj, {
+    bestblock: mapString(obj["bestblock"], ctx("bestblock")),
+    confirmations: mapInt(obj["confirmations"], ctx("confirmations")),
+    value: mapAmount(obj["value"], ctx("value")),
+    interest: mapAmountOptional(obj["interest"], ctx("interest")),
+    coinbase: mapBoolean(obj["coinbase"], ctx("coinbase")),
+  });
+}
+
+/** Result of `getblocksubsidy` — the block reward at a height. */
+export interface GetBlockSubsidyResult {
+  /** Miner reward — bigint sats. */
+  miner: bigint;
+  [key: string]: unknown;
+}
+
+export function mapGetBlockSubsidy(raw: unknown): GetBlockSubsidyResult {
+  const method = "getblocksubsidy";
+  const obj = expectObject(raw, method);
+  const ctx = (field: string): FieldContext => ({ method, field });
+  // The daemon (source v1.2.17, live-checked against 2.0.7) returns only
+  // `miner`; any PBaaS reward-split fields a newer daemon adds pass through.
+  return withPassthrough<GetBlockSubsidyResult>(obj, {
+    miner: mapAmount(obj["miner"], ctx("miner")),
+  });
+}
+
+/** Result of `getnetworkinfo` — P2P/network state. */
+export interface GetNetworkInfoResult {
+  /** Server build id. */
+  version: number;
+  /** Subversion string, e.g. "/MagicBean:2.0.7-3/". */
+  subversion: string;
+  protocolversion: number;
+  /** Offered service flags as a 16-char hex string (not a number). */
+  localservices: string;
+  timeoffset: number;
+  connections: number;
+  /**
+   * Minimum relay fee (per kB) — bigint sats. The same daemon field as
+   * `chain.getInfo().relayfee`; read through either, it is now bigint.
+   */
+  relayfee: bigint;
+  warnings: string;
+  /**
+   * `networks` and `localaddresses` are nested arrays whose element shape
+   * varies by daemon version (2.0.7 adds `proxy_randomize_credentials` to
+   * each network) — they pass through untyped under the index signature.
+   */
+  [key: string]: unknown;
+}
+
+export function mapGetNetworkInfo(raw: unknown): GetNetworkInfoResult {
+  const method = "getnetworkinfo";
+  const obj = expectObject(raw, method);
+  const ctx = (field: string): FieldContext => ({ method, field });
+  return withPassthrough<GetNetworkInfoResult>(obj, {
+    version: mapInt(obj["version"], ctx("version")),
+    subversion: mapString(obj["subversion"], ctx("subversion")),
+    protocolversion: mapInt(obj["protocolversion"], ctx("protocolversion")),
+    localservices: mapString(obj["localservices"], ctx("localservices")),
+    timeoffset: mapInt(obj["timeoffset"], ctx("timeoffset")),
+    connections: mapInt(obj["connections"], ctx("connections")),
+    relayfee: mapAmount(obj["relayfee"], ctx("relayfee")),
+    warnings: mapString(obj["warnings"], ctx("warnings")),
   });
 }
 
@@ -148,6 +248,16 @@ export class BlockchainApi {
     });
   }
 
+  /**
+   * Block reward at a height (default: current tip). T1 — `miner` is bigint
+   * sats. The daemon returns only `miner`; PBaaS reward-split fields from a
+   * newer daemon pass through untyped.
+   */
+  async getBlockSubsidy(options?: { height?: number }): Promise<GetBlockSubsidyResult> {
+    const params: unknown[] = options?.height === undefined ? [] : [options.height];
+    return mapGetBlockSubsidy(await this.transport.request("getblocksubsidy", params));
+  }
+
   // -------------------------------------------------------------------------
   // T2 typed (value fields as exact decimal strings)
 
@@ -172,12 +282,6 @@ export class BlockchainApi {
     return requestT2(this.transport, "getmininginfo", []);
   }
 
-  /** Block reward split at a height. T2 — decimal strings. */
-  async getBlockSubsidy(options?: { height?: number }): Promise<Record<string, unknown>> {
-    const params: unknown[] = options?.height === undefined ? [] : [options.height];
-    return requestT2(this.transport, "getblocksubsidy", params);
-  }
-
   /** Decoded raw transaction. `verbose` controls hex vs object. T2. */
   async getRawTransaction(options: { txid: string; verbose?: boolean }): Promise<unknown> {
     const params: unknown[] = [options.txid];
@@ -185,16 +289,23 @@ export class BlockchainApi {
     return requestT2(this.transport, "getrawtransaction", params);
   }
 
-  /** UTXO details (null if spent/unknown). T2 — value as decimal string. */
+  /**
+   * One unspent output's detail, or `null` when it is spent or unknown. T1 —
+   * `value` is bigint sats, matching `listUnspent().amount` and
+   * `getAddressUtxos().satoshis`; the same output read through any of the
+   * three now gives the same type.
+   */
   async getTxOut(options: {
     txid: string;
     vout: number;
     includeMempool?: boolean;
-  }): Promise<Record<string, unknown> | null> {
+  }): Promise<GetTxOutResult | null> {
     const params: unknown[] = [options.txid, options.vout];
     if (options.includeMempool !== undefined) params.push(options.includeMempool);
-    const result = await requestT2<Record<string, unknown> | null>(this.transport, "gettxout", params);
-    return result ?? null;
+    const raw = await this.transport.request("gettxout", params);
+    // The daemon answers a bare null for spent/unknown outputs — short-circuit
+    // before mapping, or expectObject would turn "unspent? no" into an error.
+    return raw === null || raw === undefined ? null : mapGetTxOut(raw);
   }
 
   /**
@@ -234,16 +345,20 @@ export class BlockchainApi {
   }
 
   // -------------------------------------------------------------------------
-  // Network / Util reads. T2.
+  // Network / Util reads. Mostly T2; getNetworkInfo is curated T1.
 
   /** Connected-peer info. T2. */
   async getPeerInfo(): Promise<unknown[]> {
     return requestT2(this.transport, "getpeerinfo", []);
   }
 
-  /** P2P/network summary. T2. */
-  async getNetworkInfo(): Promise<Record<string, unknown>> {
-    return requestT2(this.transport, "getnetworkinfo", []);
+  /**
+   * P2P/network summary. T1 — `relayfee` is bigint sats, the same daemon
+   * field as `client.chain.getInfo().relayfee`; reading it through either now
+   * gives the same type. `networks`/`localaddresses` pass through untyped.
+   */
+  async getNetworkInfo(): Promise<GetNetworkInfoResult> {
+    return mapGetNetworkInfo(await this.transport.request("getnetworkinfo", []));
   }
 
   /** Validate an address / return its metadata. T2. */

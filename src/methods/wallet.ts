@@ -14,8 +14,8 @@ import {
   withPassthrough,
 } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
-import { pollOperation, requireTxid } from "./operations.js";
-import { requestT2 } from "./t2.js";
+import { pollOperation, requireTxid, throwIfAborted } from "./operations.js";
+import { decimalString, decimalStringEntries, requestT2 } from "./t2.js";
 import type {
   GetWalletInfoResult,
   GroupedAddress,
@@ -115,8 +115,11 @@ export interface SendCurrencyOptions {
 }
 
 export interface OperationError {
-  code: number;
-  message: string;
+  // Both are optional: the daemon reliably sends them, but an error body that
+  // omits one must still surface as an OperationFailedError (the operation DID
+  // fail), never as a shape-drift error that hides the failure.
+  code?: number | undefined;
+  message?: string | undefined;
   [key: string]: unknown;
 }
 
@@ -142,6 +145,8 @@ export interface OperationStatus {
 export interface GetOperationStatusOptions {
   /** Restrict to these opids; all known operations when omitted. */
   operationIds?: string[];
+  /** Aborts the in-flight request. */
+  signal?: AbortSignal;
 }
 
 export interface SendCurrencyAndWaitOptions extends SendCurrencyOptions {
@@ -149,6 +154,13 @@ export interface SendCurrencyAndWaitOptions extends SendCurrencyOptions {
   pollIntervalMs?: number;
   /** Deadline for the operation to reach a final state. Default 120s. */
   waitTimeoutMs?: number;
+  /**
+   * Cancels the wait: checked before the send, aborts each in-flight poll
+   * request, and interrupts the inter-poll sleep. A cancel surfaces as
+   * `TransportError("aborted")`. An already-broadcast send still completes on
+   * the daemon — cancelling stops the polling, not the transaction.
+   */
+  signal?: AbortSignal;
 }
 
 export interface SendCurrencyAndWaitResult {
@@ -223,8 +235,8 @@ export function mapOperationStatus(raw: unknown, index: number): OperationStatus
 
 function mapOperationError(obj: Record<string, unknown>, ctx: { method: string; field: string }): OperationError {
   return withPassthrough<OperationError>(obj, {
-    code: mapInt(obj["code"], { method: ctx.method, field: `${ctx.field}.code` }),
-    message: mapString(obj["message"], { method: ctx.method, field: `${ctx.field}.message` }),
+    code: mapIntOptional(obj["code"], { method: ctx.method, field: `${ctx.field}.code` }),
+    message: mapStringOptional(obj["message"], { method: ctx.method, field: `${ctx.field}.message` }),
   });
 }
 
@@ -379,7 +391,10 @@ export class WalletApi {
   /** `z_getoperationstatus` — state of async wallet operations. */
   async getOperationStatus(options?: GetOperationStatusOptions): Promise<OperationStatus[]> {
     const params: unknown[] = options?.operationIds === undefined ? [] : [options.operationIds];
-    const result = expectArray(await this.transport.request("z_getoperationstatus", params), "z_getoperationstatus");
+    const result = expectArray(
+      await this.transport.request("z_getoperationstatus", params, options?.signal),
+      "z_getoperationstatus",
+    );
     return result.map((item, i) => mapOperationStatus(item, i));
   }
 
@@ -391,12 +406,18 @@ export class WalletApi {
    * completed, only the response shape drifted; never retry it.
    */
   async sendCurrencyAndWait(options: SendCurrencyAndWaitOptions): Promise<SendCurrencyAndWaitResult> {
-    const { pollIntervalMs, waitTimeoutMs, ...sendOptions } = options;
+    const { pollIntervalMs, waitTimeoutMs, signal, ...sendOptions } = options;
+    // Honor a pre-aborted signal before broadcasting — do not send, then poll.
+    throwIfAborted(signal, "sendCurrencyAndWait");
     const opid = await this.sendCurrency(sendOptions);
     const status = await pollOperation(
-      async () => (await this.getOperationStatus({ operationIds: [opid] })).find((s) => s.id === opid),
+      async () =>
+        (await this.getOperationStatus({ operationIds: [opid], ...(signal ? { signal } : {}) })).find(
+          (s) => s.id === opid,
+        ),
       opid,
       { intervalMs: pollIntervalMs ?? 1_000, timeoutMs: waitTimeoutMs ?? 120_000 },
+      signal,
     );
     return { opid, txid: requireTxid(status) };
   }
@@ -502,11 +523,6 @@ export class WalletApi {
   // -------------------------------------------------------------------------
   // T2 — typed (value fields as exact decimal strings)
 
-  /** T2 helper: request + safe-number conversion + typed cast. */
-  private async t2<T>(method: string, params: unknown[]): Promise<T> {
-    return toSafeNumbers(await this.transport.request(method, params)) as T;
-  }
-
   /** Received totals per address. T2 — amounts as exact decimal strings. */
   async listReceivedByAddress(options?: ListReceivedOptions): Promise<ReceivedByAddressEntry[]> {
     const params: unknown[] = [];
@@ -514,15 +530,16 @@ export class WalletApi {
     if (options?.minConf !== undefined || needEmpty) params.push(options.minConf ?? 1);
     if (needEmpty) params.push(options.includeEmpty ?? false);
     if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
-    return this.t2("listreceivedbyaddress", params);
+    const raw = await this.transport.request("listreceivedbyaddress", params);
+    return decimalStringEntries<ReceivedByAddressEntry>(toSafeNumbers(raw), "listreceivedbyaddress", "amount");
   }
 
   /** Total received by one address. T2 — exact decimal string. */
   async getReceivedByAddress(options: { address: string; minConf?: number }): Promise<string> {
     const params: unknown[] = [options.address];
     if (options.minConf !== undefined) params.push(options.minConf);
-    const result = await this.t2<string | number>("getreceivedbyaddress", params);
-    return typeof result === "number" ? String(result) : result;
+    const result = await requestT2<string | number>(this.transport, "getreceivedbyaddress", params);
+    return decimalString(result);
   }
 
   /**
@@ -535,9 +552,9 @@ export class WalletApi {
       params.push(options.minConf ?? 1);
     }
     if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
-    const raw = await this.t2<Record<string, string | number>>("listaccounts", params);
+    const raw = await requestT2<Record<string, string | number>>(this.transport, "listaccounts", params);
     const out: Record<string, string> = {};
-    for (const [account, amount] of Object.entries(raw)) out[account] = String(amount);
+    for (const [account, amount] of Object.entries(raw)) out[account] = decimalString(amount);
     return out;
   }
 
