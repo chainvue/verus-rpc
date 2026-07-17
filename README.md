@@ -131,4 +131,10 @@ deadline hit surfaces the last poll failure as `cause`.
 - Deliberately transport + types only — no client-side signing or tx construction (that's [`@chainvue/verus-sdk`](https://www.npmjs.com/package/@chainvue/verus-sdk) / `verusid-ts-client`).
 - Per-area depth in the table above, plus [amounts](./docs/amounts.md) (the money model) and [live testing](./docs/testing-live.md); runnable scripts in [`examples/`](./examples) (`pnpm i` builds first, then `node --experimental-strip-types examples/block-height.ts`).
 
+## Contributing
+
+Issues and PRs welcome — start with [CONTRIBUTING.md](./CONTRIBUTING.md) for the
+setup, the gate, and the precision rules that keep amounts exact. Security
+issues: [SECURITY.md](./SECURITY.md).
+
 Apache-2.0 · Copyright 2026 Robert Lech · see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
