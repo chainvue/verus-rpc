@@ -15,7 +15,7 @@ import {
 } from "../mapping.js";
 import type { RpcTransport } from "../transport.js";
 import { pollOperation, requireTxid } from "./operations.js";
-import { requestT2 } from "./t2.js";
+import { decimalString, requestT2 } from "./t2.js";
 import type {
   GetWalletInfoResult,
   GroupedAddress,
@@ -502,11 +502,6 @@ export class WalletApi {
   // -------------------------------------------------------------------------
   // T2 — typed (value fields as exact decimal strings)
 
-  /** T2 helper: request + safe-number conversion + typed cast. */
-  private async t2<T>(method: string, params: unknown[]): Promise<T> {
-    return toSafeNumbers(await this.transport.request(method, params)) as T;
-  }
-
   /** Received totals per address. T2 — amounts as exact decimal strings. */
   async listReceivedByAddress(options?: ListReceivedOptions): Promise<ReceivedByAddressEntry[]> {
     const params: unknown[] = [];
@@ -514,15 +509,16 @@ export class WalletApi {
     if (options?.minConf !== undefined || needEmpty) params.push(options.minConf ?? 1);
     if (needEmpty) params.push(options.includeEmpty ?? false);
     if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
-    return this.t2("listreceivedbyaddress", params);
+    const raw = await requestT2<ReceivedByAddressEntry[]>(this.transport, "listreceivedbyaddress", params);
+    return raw.map((entry) => ({ ...entry, amount: decimalString(entry.amount) }));
   }
 
   /** Total received by one address. T2 — exact decimal string. */
   async getReceivedByAddress(options: { address: string; minConf?: number }): Promise<string> {
     const params: unknown[] = [options.address];
     if (options.minConf !== undefined) params.push(options.minConf);
-    const result = await this.t2<string | number>("getreceivedbyaddress", params);
-    return typeof result === "number" ? String(result) : result;
+    const result = await requestT2<string | number>(this.transport, "getreceivedbyaddress", params);
+    return decimalString(result);
   }
 
   /**
@@ -535,9 +531,9 @@ export class WalletApi {
       params.push(options.minConf ?? 1);
     }
     if (options?.includeWatchOnly !== undefined) params.push(options.includeWatchOnly);
-    const raw = await this.t2<Record<string, string | number>>("listaccounts", params);
+    const raw = await requestT2<Record<string, string | number>>(this.transport, "listaccounts", params);
     const out: Record<string, string> = {};
-    for (const [account, amount] of Object.entries(raw)) out[account] = String(amount);
+    for (const [account, amount] of Object.entries(raw)) out[account] = decimalString(amount);
     return out;
   }
 
