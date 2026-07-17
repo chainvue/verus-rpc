@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { OperationFailedError, OperationTimeoutError, ResponseMappingError, TransportError, VerusRpcError } from "../src/errors.js";
 import { isLosslessNumber } from "../src/lossless.js";
 import { WalletApi, type OperationStatus } from "../src/methods/wallet.js";
-import { pollOperation } from "../src/methods/operations.js";
+import { pollOperation, sleep } from "../src/methods/operations.js";
 import { MockTransport } from "../src/mock.js";
 
 function setup(): { mock: MockTransport; wallet: WalletApi } {
@@ -326,5 +326,20 @@ describe("pollOperation cancellation", () => {
     ).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(TransportError);
     expect((err as TransportError).reason).toBe("aborted");
+  });
+
+  it("sleep clears its pending timer and rejects when aborted mid-wait (not the pre-aborted path)", async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = new AbortController();
+      const pending = sleep(10_000, controller.signal); // timer genuinely armed
+      const rejected = expect(pending).rejects.toMatchObject({ reason: "aborted" });
+      controller.abort(); // fire onAbort while the timer is still pending
+      await rejected;
+      // If the onAbort branch dropped its clearTimeout, this timer would linger.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
