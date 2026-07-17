@@ -32,8 +32,23 @@ fixtures are parsed losslessly by the conformance suite, never through
 | `getvdxfid.json` | https://api.verus.services, `vrsc::system.currency.export` | 2026-07-12 | |
 | `getblocksubsidy.json` | https://api.verus.services, height 4147000 | 2026-07-12 | `"miner":3.0` single-decimal token |
 | `getblockchaininfo.json` | https://api.verus.services | 2026-07-12 | T2 reference shape |
+| `getaddressutxos.json` | https://api.verus.services (foundation primary address) | 2026-07-17 | Truncated from 517 to 2 entries (int-only re-serialization, verified lossless — this body carries no `currencyvalues`): one real 0-value CC/identity output, one real value UTXO |
+| `getaddressdeltas.json` | https://api.verus.services (foundation primary address, heights 3634845-3634846) | 2026-07-17 | **Byte-exact, untruncated.** Carries the same value in BOTH representations at once: `satoshis:1013218` and `currencyvalues:{...:0.01013218}`. Known gap: this address had no spend in range, so the recording has no negative (signed) delta — that path is covered by unit tests only |
+| `registernamecommitment.json` | VRSCTEST live write-harness capture (daemon v1.2.17) | 2026-07-17 | Real recorded response; **`salt` scrubbed** to zeros (same length) — a commitment secret never enters the repo. All other values verbatim; int-only re-serialization, lossless |
 | `coinsupply.json` | VRSCTEST node probe (daemon v1.2.17), height 1000000 | 2026-07-17 | Supply-scale amounts; trailing-zero token `55999999.99700000`. Not on the public gateway (`-32601`); daemon reports failures in-band (`{"error": ...}`) |
 
-T1 discipline: synthetic fixtures are a stopgap — the tier promise ("no T1
-method without a recorded fixture") is only fully honored once the wallet
-methods are re-recorded from the VRSCTEST node.
+T1 discipline: `test/fixtures.test.ts` now ENFORCES the rule — it discovers
+every exported `map*` in `src/methods/` and fails if one has no conformance
+assertion here, with exceptions listed explicitly and with a reason. Until
+2026-07-17 the rule lived only in a PR-template checkbox, and three T1 money
+mappers (`mapAddressUtxo`, `mapAddressDelta`, `mapNameCommitment`) had
+shipped with no fixture at all; those are now recorded.
+
+Synthetic fixtures remain a stopgap: 9 of the entries above are hand-written
+from `help` v1.2.17, and every one of them is on the wallet/write surface
+(`getbalance`, `gettransaction`, `listunspent`, `listtransactions`,
+`getwalletinfo`, `listaddressgroupings`, `signmessage`, `sendcurrency`,
+`z_getoperationstatus`). So the recorded evidence covers the read surface
+well and the money-WRITING surface not at all. One deliberate VRSCTEST dust
+send would close `sendcurrency` + `z_getoperationstatus`, the highest-value
+recording still outstanding.
