@@ -9,14 +9,16 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       exclude: ["**/*.d.ts", "src/index.ts"],
       reporter: ["text-summary", "html", "lcov"],
-      // Floors set a few points below the 2026-07-14 measured coverage
-      // (stmts 80.2 / branch 62.1 / funcs 84.2 / lines 85.4) so the gate is
-      // stable but still catches a real regression. Ratchet upward over time.
+      // Floors sit ~2 points below the measured coverage so the gate is stable
+      // but still catches a real regression. Ratchet them when coverage rises:
+      // the previous floors were set for the 2026-07-14 numbers and drifted ~10
+      // points behind, which would have let a large silent regression through.
+      // Measured 2026-07-17: stmts 84.6 / branch 70.3 / funcs 87.7 / lines 89.0.
       thresholds: {
-        statements: 75,
-        branches: 57,
-        functions: 80,
-        lines: 80,
+        statements: 82,
+        branches: 68,
+        functions: 85,
+        lines: 87,
       },
     },
   },
