@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/chainvue/verus-rpc/compare/v0.7.0...v0.7.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* **deps:** bump lossless-json from 4.3.0 to 4.3.1 ([#31](https://github.com/chainvue/verus-rpc/issues/31)) ([392f15c](https://github.com/chainvue/verus-rpc/commit/392f15ceef125135638023224a7f4dfa3d00b112))
+
 # [0.7.0](https://github.com/chainvue/verus-rpc/compare/v0.6.0...v0.7.0) (2026-07-17)
 
 
