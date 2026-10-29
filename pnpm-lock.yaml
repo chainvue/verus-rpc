@@ -13,7 +13,7 @@ importers:
         version: 4.0.0
       lossless-json:
         specifier: ^4.3.0
-        version: 4.3.1
+        version: 4.3.3
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -1300,8 +1300,8 @@ packages:
   lodash.uniqby@4.7.0:
     resolution: {integrity: sha512-e/zcLx6CSbmaEgFHCA7BnoQKyCtKMxnuWrJygbwPs/AIn+IMKl66L8/s+wBUn5LRw2pZx3bUHibiV1b6aTWIww==}
 
-  lossless-json@4.3.1:
-    resolution: {integrity: sha512-SqD/Bg3ZfltBJ2Z14hJ/BihnvtV553WO4g9/ePtlp4lrnl9jF3AdIJt53A/Wkg/0Li+LMfxaBqgx1MiFZdQlpQ==}
+  lossless-json@4.3.3:
+    resolution: {integrity: sha512-FGFrGArHsv7BRiYOf37ZRieT9HlKw+Kpu9HvtpYjcoOEo8lqNkjny8A2YAfWNWWQC+9pcLIrLZ+IviKJhaHwGQ==}
 
   lru-cache@10.4.3:
     resolution: {integrity: sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ==}
@@ -3388,7 +3388,7 @@ snapshots:
 
   lodash.uniqby@4.7.0: {}
 
-  lossless-json@4.3.1: {}
+  lossless-json@4.3.3: {}
 
   lru-cache@10.4.3: {}
 
